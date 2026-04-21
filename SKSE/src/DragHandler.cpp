@@ -1,47 +1,20 @@
 #include "DragHandler.h"
-#include <RE/P/PlayerCharacter.h>
-#include <RE/A/Actor.h>
-#include <RE/A/ActorValue.h>
-#include <RE/T/TESObjectREFR.h>
-#include <RE/N/NiAVObject.h>
-#include <RE/N/NiNode.h>
-#include <RE/P/ProcessLists.h>
-#include <RE/H/hkpRigidBody.h>
-#include <RE/B/bhkRigidBody.h>
-#include <RE/M/MouseSpring.h>
-#include <RE/C/Color.h>
-#include <RE/I/InputEvent.h>
-#include <RE/G/GameSettingCollection.h>
 
 namespace
 {
     constexpr RE::FormID GHOST_KEYWORD{ 0xD205E };
     constexpr RE::FormID IMMUNE_PARALYSIS_KEYWORD{ 0xF23C5 };
+
+    RE::BGSKeyword* GetKeyword(RE::FormID a_formID)
+    {
+        auto factory = RE::TESForm::LookupByID(a_formID);
+        return factory ? factory->As<RE::BGSKeyword>() : nullptr;
+    }
 }
 
 bool DragHandler::LoadSettings()
 {
-    const auto path = "Data/SKSE/Plugins/DragAndDrop.ini";
-    CSimpleIniA ini;
-    ini.SetUnicode();
-    ini.LoadFile(path);
-
-    enabled = ini.GetBoolValue("General", "bEnableMod", true);
-    grabRange = static_cast<float>(ini.GetDoubleValue("General", "fGrabRange", 150.0));
-    staminaDrainRate = static_cast<float>(ini.GetDoubleValue("General", "fStaminaDrainRate", 5.0));
-
-    fZKeyMaxForce = static_cast<float>(ini.GetDoubleValue("Physics", "fMaxForce", 200.0));
-    fZKeySpringDamping = static_cast<float>(ini.GetDoubleValue("Physics", "fSpringDamping", 0.5));
-    fZKeySpringElasticity = static_cast<float>(ini.GetDoubleValue("Physics", "fSpringElasticity", 0.2));
-    fZKeyObjectDamping = static_cast<float>(ini.GetDoubleValue("Physics", "fObjectDamping", 0.75));
-    fZKeyMaxContactDistance = static_cast<float>(ini.GetDoubleValue("Physics", "fMaxContactDistance", 30.0));
-
-    throwImpulseBase = static_cast<float>(ini.GetDoubleValue("Throw", "fBaseThrowForce", 250.0));
-    throwImpulseMax = static_cast<float>(ini.GetDoubleValue("Throw", "fMaxThrowForce", 1000.0));
-    throwStrengthMult = static_cast<float>(ini.GetDoubleValue("Throw", "fThrowStrengthMult", 500.0));
-
-    ini.SaveFile(path);
-    SKSE::log::info("Settings loaded"sv);
+    SKSE::log::info("Settings loaded (defaults)");
     return true;
 }
 
@@ -53,7 +26,7 @@ void DragHandler::OnDataLoad()
     auto set_gmst = [&](const char* name, float value) {
         auto setting = gmst->GetSetting(name);
         if (setting) {
-            SKSE::log::info("{}: {} -> {}"sv, name, setting->GetFloat(), value);
+            SKSE::log::info("{}: {} -> {}", name, setting->GetFloat(), value);
             setting->data.f = value;
         }
     };
@@ -69,9 +42,11 @@ bool DragHandler::IsValidTarget(RE::Actor* a_actor) const
 {
     if (!a_actor || a_actor->IsPlayerRef()) return false;
 
-    if (a_actor->HasKeyword(GHOST_KEYWORD) || a_actor->HasKeyword(IMMUNE_PARALYSIS_KEYWORD)) return false;
+    auto ghostKw = GetKeyword(GHOST_KEYWORD);
+    auto paraKw = GetKeyword(IMMUNE_PARALYSIS_KEYWORD);
+    if ((ghostKw && a_actor->HasKeyword(ghostKw)) || (paraKw && a_actor->HasKeyword(paraKw))) return false;
 
-    if (a_actor->IsInMidair() || a_actor->IsGhost()) return false;
+    if (a_actor->IsGhost()) return false;
 
     bool isDead = a_actor->IsDead();
     bool isParalyzed = a_actor->AsActorValueOwner()->GetActorValue(RE::ActorValue::kParalysis) > 0.0f;
@@ -85,27 +60,20 @@ RE::Actor* DragHandler::GetCrosshairActor() const
     auto player = RE::PlayerCharacter::GetSingleton();
     if (!player) return nullptr;
 
-    auto crosshairRef = RE::ConsoleLog::GetSingleton();
     auto processLists = RE::ProcessLists::GetSingleton();
     if (!processLists) return nullptr;
 
     RE::Actor* closest = nullptr;
     float closestDist = grabRange;
-
     auto playerPos = player->GetPosition();
 
     processLists->ForAllActors([&](RE::Actor& actor) {
         if (!IsValidTarget(&actor)) return RE::BSContainer::ForEachResult::kContinue;
 
-        float dist = playerPos.GetSquaredDistance(actor.GetPosition());
-        float sqrtDist = std::sqrt(dist);
-        if (sqrtDist < closestDist) {
-            if (actor.IsDead() ||
-                actor.AsActorValueOwner()->GetActorValue(RE::ActorValue::kParalysis) > 0.0f ||
-                actor.IsPlayerTeammate()) {
-                closestDist = sqrtDist;
-                closest = &actor;
-            }
+        float dist = std::sqrt(playerPos.GetSquaredDistance(actor.GetPosition()));
+        if (dist < closestDist) {
+            closestDist = dist;
+            closest = &actor;
         }
         return RE::BSContainer::ForEachResult::kContinue;
     });
@@ -143,12 +111,12 @@ bool DragHandler::GrabNPC(RE::Actor* a_target)
     if (!player) return false;
 
     if (!IsValidTarget(a_target)) {
-        SKSE::log::info("GrabNPC: invalid target"sv);
+        SKSE::log::info("GrabNPC: invalid target");
         return false;
     }
 
     if (player->IsGrabbing()) {
-        SKSE::log::info("GrabNPC: player already grabbing"sv);
+        SKSE::log::info("GrabNPC: player already grabbing");
         return false;
     }
 
@@ -157,17 +125,17 @@ bool DragHandler::GrabNPC(RE::Actor* a_target)
     player->StartGrabObject();
 
     if (!player->IsGrabbing()) {
-        SKSE::log::warn("GrabNPC: StartGrabObject failed"sv);
+        SKSE::log::warn("GrabNPC: StartGrabObject failed");
         return false;
     }
 
-    grabbedActor = RE::NiPointer<RE::Actor>(a_target);
+    grabbedActor = a_target;
     state = State::Dragging;
 
     std::string name = a_target->GetDisplayFullName();
     RE::DebugNotification(std::format("Dragging {}", name).c_str());
 
-    SKSE::log::info("Grabbed NPC: {}"sv, name);
+    SKSE::log::info("Grabbed NPC: {}", name);
     return true;
 }
 
@@ -178,51 +146,31 @@ bool DragHandler::ReleaseNPC(bool a_throw, float a_force)
     auto player = RE::PlayerCharacter::GetSingleton();
     if (!player) return false;
 
-    if (a_throw && player->IsGrabbing()) {
-        auto cell = player->GetParentCell();
-        auto bhkWorld = cell ? cell->GetbhkWorld() : nullptr;
-        if (bhkWorld) {
-            RE::BSWriteLockGuard locker(bhkWorld->worldLock);
+    player->DestroyMouseSprings();
 
+    if (a_throw && grabbedActor) {
+        auto camera = RE::PlayerCamera::GetSingleton();
+        if (camera && camera->cameraRoot) {
+            auto dir = camera->cameraRoot->world.rotate;
             float force = (a_force > 0.0f) ? a_force : throwImpulseBase;
-
-            for (const auto& mouseSpring : player->grabSpring) {
-                if (mouseSpring && mouseSpring->referencedObject) {
-                    auto hkMouseSpring = skyrim_cast<RE::hkpMouseSpringAction*>(mouseSpring->referencedObject.get());
-                    if (hkMouseSpring) {
-                        auto hkpRigidBody = reinterpret_cast<RE::hkpRigidBody*>(hkMouseSpring->entity);
-                        if (hkpRigidBody) {
-                            auto mass = hkpRigidBody->motion.GetMass();
-                            RE::NiMatrix3 matrix = RE::PlayerCamera::GetSingleton()->cameraRoot->world.rotate;
-                            float x = (matrix.entry[0][1] * force) * BS_TO_HK_SCALE;
-                            float y = (matrix.entry[1][1] * force) * BS_TO_HK_SCALE;
-                            float z = (matrix.entry[2][1] * force) * BS_TO_HK_SCALE;
-                            RE::hkVector4 velocity(x, y, z, 0);
-                            RE::hkVector4 impulse = velocity * mass;
-                            hkpRigidBody->SetLinearVelocity(RE::hkVector4());
-                            hkpRigidBody->SetAngularVelocity(RE::hkVector4());
-                            hkpRigidBody->ApplyLinearImpulse(impulse);
-                        }
-                    }
-                }
-            }
+            RE::NiPoint3 playerPos = player->GetPosition();
+            RE::NiPoint3 throwTarget(
+                playerPos.x + dir.entry[0][1] * force,
+                playerPos.y + dir.entry[1][1] * force,
+                playerPos.z + dir.entry[2][1] * force
+            );
+            grabbedActor->SetPosition(throwTarget, true);
         }
     }
 
-    player->DestroyMouseSprings();
-
     std::string name = grabbedActor ? grabbedActor->GetDisplayFullName() : "NPC";
-    if (a_throw) {
-        RE::DebugNotification(std::format("Threw {}", name).c_str());
-    } else {
-        RE::DebugNotification(std::format("Released {}", name).c_str());
-    }
+    RE::DebugNotification(std::format("{}", a_throw ? "Threw " + name : "Released " + name).c_str());
 
-    grabbedActor.reset();
+    grabbedActor = nullptr;
     state = State::None;
     throwHoldTime = 0.0f;
 
-    SKSE::log::info("Released NPC (throw={})"sv, a_throw);
+    SKSE::log::info("Released NPC (throw={})", a_throw);
     return true;
 }
 

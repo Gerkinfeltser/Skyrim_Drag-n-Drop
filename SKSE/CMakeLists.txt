@@ -2,6 +2,9 @@ cmake_minimum_required(VERSION 3.21)
 
 project(DragAndDrop VERSION 1.0.0 LANGUAGES CXX)
 
+set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /MD")
+set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} /MDd")
+
 if(DEFINED ENV{SKYRIM_FOLDER} AND IS_DIRECTORY "$ENV{SKYRIM_FOLDER}/Data")
     set(OUTPUT_FOLDER "$ENV{SKYRIM_FOLDER}/Data")
 endif()
@@ -16,8 +19,6 @@ target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_23)
 target_precompile_headers(${PROJECT_NAME} PRIVATE src/PCH.h)
 target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_compile_options(${PROJECT_NAME} PRIVATE /utf-8 /FI"${CMAKE_CURRENT_SOURCE_DIR}/src/PCH.h" /UENABLE_SKYRIM_VR)
-
-set_property(TARGET ${PROJECT_NAME} PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 
 if(DEFINED OUTPUT_FOLDER)
     set(DLL_FOLDER "${OUTPUT_FOLDER}/SKSE/Plugins")

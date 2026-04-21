@@ -1,8 +1,5 @@
 #include "Hooks.h"
 #include "DragHandler.h"
-#include <RE/P/PlayerCharacter.h>
-#include <RE/I/InputEvent.h>
-#include <RE/H/Handlers.h>
 
 namespace Hooks
 {
@@ -12,7 +9,6 @@ namespace Hooks
         {
             static void thunk(RE::ActivateHandler* a_this, RE::ButtonEvent* a_event, RE::PlayerControlsData* a_data)
             {
-                auto player = RE::PlayerCharacter::GetSingleton();
                 auto handler = DragHandler::GetSingleton();
 
                 if (handler->IsDragging()) {
@@ -72,11 +68,17 @@ namespace Hooks
 
         void Install()
         {
-            SKSE::log::info("Installing grab/release hooks"sv);
-            SKSE::stl::write_vfunc<RE::ActivateHandler, ActivateButton>();
-            SKSE::stl::write_vfunc<RE::ReadyWeaponHandler, ReadyWeaponButton>();
-            SKSE::stl::write_vfunc<RE::AttackBlockHandler, BlockAttackInput>();
-            SKSE::log::info("Grab/release hooks installed"sv);
+            SKSE::log::info("Installing grab/release hooks");
+
+            REL::Relocation<std::uintptr_t> activateVtbl{ RE::VTABLE_ActivateHandler[0] };
+            REL::Relocation<std::uintptr_t> readyVtbl{ RE::VTABLE_ReadyWeaponHandler[0] };
+            REL::Relocation<std::uintptr_t> attackVtbl{ RE::VTABLE_AttackBlockHandler[0] };
+
+            ActivateButton::func = activateVtbl.write_vfunc(ActivateButton::idx, ActivateButton::thunk);
+            ReadyWeaponButton::func = readyVtbl.write_vfunc(ReadyWeaponButton::idx, ReadyWeaponButton::thunk);
+            BlockAttackInput::func = attackVtbl.write_vfunc(BlockAttackInput::idx, BlockAttackInput::thunk);
+
+            SKSE::log::info("Grab/release hooks installed");
         }
     }
 

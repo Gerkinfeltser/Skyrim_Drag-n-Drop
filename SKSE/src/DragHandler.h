@@ -1,17 +1,23 @@
 #pragma once
 
-#include <RE/Skyrim.h>
-#include <SKSE/SKSE.h>
+#include "RE/Skyrim.h"
+#include "SKSE/SKSE.h"
 
-class DragHandler : public REX::Singleton<DragHandler>
+class DragHandler
 {
 public:
+    static DragHandler* GetSingleton()
+    {
+        static DragHandler instance;
+        return &instance;
+    }
+
     bool LoadSettings();
     void OnDataLoad();
 
     bool GrabNPC(RE::Actor* a_target);
     bool ReleaseNPC(bool a_throw, float a_force);
-    RE::Actor* GetGrabbedActor() const { return grabbedActor.get().get(); }
+    RE::Actor* GetGrabbedActor() const { return grabbedActor; }
     bool IsDragging() const { return state != State::None; }
 
     void OnGrabKeyHeld(float a_heldDuration);
@@ -32,7 +38,7 @@ private:
     void ApplyRagdoll(RE::Actor* a_actor);
     void DrainStamina(float a_dt);
 
-    RE::NiPointer<RE::Actor> grabbedActor;
+    RE::Actor* grabbedActor{ nullptr };
     State state{ State::None };
     float throwHoldTime{ 0.0f };
 

@@ -7,5 +7,6 @@
 #include <chrono>
 #include <thread>
 
+#include <spdlog/sinks/basic_file_sink.h>
 #include "RE/Skyrim.h"
 #include "SKSE/SKSE.h"
