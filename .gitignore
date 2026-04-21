@@ -1,0 +1,23 @@
+# Build artifacts
+SKSE/build/
+SKSE/vcpkg_installed/
+build/
+
+# Compiled Papyrus (generated from Source/Scripts)
+scripts/*.pex
+
+# IDE
+.vs/
+.vscode/
+*.user
+*.suo
+*.sln
+*.vcxproj*
+
+# OS
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# Skyrim runtime logs
+*.log
