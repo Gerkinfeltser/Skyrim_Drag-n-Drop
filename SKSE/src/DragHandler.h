@@ -1,5 +1,7 @@
 #pragma once
 
+#include <chrono>
+
 #include "RE/Skyrim.h"
 #include "SKSE/SKSE.h"
 
@@ -44,7 +46,7 @@ private:
     State state{ State::None };
 
     bool rKeyHeld{ false };
-    float rKeyHoldTime{ 0.0f };
+    std::chrono::steady_clock::time_point rKeyTime;
 
     bool enabled{ true };
     float staminaDrainRate{ 5.0f };

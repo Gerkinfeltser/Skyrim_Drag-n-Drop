@@ -134,17 +134,45 @@ void DragHandler::ThrowGrabbedObject(float a_heldDuration)
 
     auto& grabSpring = player->GetPlayerRuntimeData().grabSpring;
 
+    SKSE::log::info("ThrowGrabbedObject: grabSpring size={}", grabSpring.size());
+
     for (auto& springRef : grabSpring) {
-        if (!springRef) continue;
+        if (!springRef) {
+            SKSE::log::info("  springRef is null, skipping");
+            continue;
+        }
 
         auto bhkObj = reinterpret_cast<RE::bhkRefObject*>(springRef.get());
-        if (!bhkObj || !bhkObj->referencedObject) continue;
+        if (!bhkObj) {
+            SKSE::log::info("  bhkObj is null");
+            continue;
+        }
+        if (!bhkObj->referencedObject) {
+            SKSE::log::info("  bhkObj->referencedObject is null");
+            continue;
+        }
 
-        auto hkpAction = static_cast<RE::hkpArrayAction*>(bhkObj->referencedObject.get());
-        if (!hkpAction || hkpAction->entities.size() == 0) continue;
+        auto hkObj = bhkObj->referencedObject.get();
+        SKSE::log::info("  hkObj ptr={}, RTTI={}", (void*)hkObj, hkObj ? "present" : "null");
+
+        auto hkpAction = static_cast<RE::hkpArrayAction*>(hkObj);
+        if (!hkpAction) {
+            SKSE::log::info("  hkpAction cast failed");
+            continue;
+        }
+
+        SKSE::log::info("  hkpAction->entities.size()={}", hkpAction->entities.size());
+
+        if (hkpAction->entities.size() == 0) {
+            SKSE::log::info("  entities empty");
+            continue;
+        }
 
         auto hkpRigidBody = reinterpret_cast<RE::hkpRigidBody*>(hkpAction->entities[0]);
-        if (!hkpRigidBody) continue;
+        if (!hkpRigidBody) {
+            SKSE::log::info("  hkpRigidBody is null");
+            continue;
+        }
 
         float mass = hkpRigidBody->motion.GetMass();
         auto impulse = GetImpulse(force, mass);
@@ -181,7 +209,6 @@ void DragHandler::UpdateGrabState()
         grabbedActor = nullptr;
         state = State::None;
         rKeyHeld = false;
-        rKeyHoldTime = 0.0f;
     }
 }
 
@@ -189,7 +216,7 @@ void DragHandler::OnKeyDown(uint32_t a_key)
 {
     if (a_key == KEY_R && state == State::Dragging) {
         rKeyHeld = true;
-        rKeyHoldTime = 0.0f;
+        rKeyTime = std::chrono::steady_clock::now();
         SKSE::log::info("R key down, charging throw");
     }
 }
@@ -202,23 +229,25 @@ void DragHandler::OnKeyUp(uint32_t a_key)
         if (player) {
             player->DestroyMouseSprings();
         }
+        if (grabbedActor) {
+            grabbedActor->AsActorValueOwner()->SetActorValue(RE::ActorValue::kParalysis, 0.0f);
+        }
         grabbedActor = nullptr;
         state = State::None;
         rKeyHeld = false;
-        rKeyHoldTime = 0.0f;
         RE::DebugNotification("Released");
         return;
     }
 
     if (a_key == KEY_R && state == State::Dragging && rKeyHeld) {
-        float heldDuration = rKeyHoldTime;
+        auto now = std::chrono::steady_clock::now();
+        float heldDuration = std::chrono::duration<float>(now - rKeyTime).count();
         SKSE::log::info("R key up -- throwing (held {:.2f}s)", heldDuration);
         ThrowGrabbedObject(heldDuration);
         RE::DebugNotification("Threw!");
         grabbedActor = nullptr;
         state = State::None;
         rKeyHeld = false;
-        rKeyHoldTime = 0.0f;
     }
 }
 
@@ -232,6 +261,9 @@ bool DragHandler::ReleaseNPC(bool a_throw, float a_force)
         ThrowGrabbedObject(a_force > 0.0f ? a_force / throwStrengthMult : 0.5f);
     } else if (player) {
         player->DestroyMouseSprings();
+        if (grabbedActor) {
+            grabbedActor->AsActorValueOwner()->SetActorValue(RE::ActorValue::kParalysis, 0.0f);
+        }
     }
 
     SKSE::log::info("Released (throw={}, force={:.1f})", a_throw, a_force);
@@ -240,7 +272,6 @@ bool DragHandler::ReleaseNPC(bool a_throw, float a_force)
     grabbedActor = nullptr;
     state = State::None;
     rKeyHeld = false;
-    rKeyHoldTime = 0.0f;
 
     return true;
 }
