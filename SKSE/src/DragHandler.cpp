@@ -203,9 +203,11 @@ void DragHandler::OnKeyUp(uint32_t a_key)
         auto player = RE::PlayerCharacter::GetSingleton();
         if (player) {
             player->DestroyMouseSprings();
+            player->AsMagicTarget()->DispelEffectsWithArchetype(RE::EffectArchetype::kGrabActor, true);
         }
         if (grabbedActor) {
             grabbedActor->AsMagicTarget()->DispelEffectsWithArchetype(RE::EffectArchetype::kGrabActor, true);
+            grabbedActor->AsActorValueOwner()->SetActorValue(RE::ActorValue::kParalysis, 0.0f);
         }
         grabbedActor = nullptr;
         state = State::None;
@@ -219,8 +221,13 @@ void DragHandler::OnKeyUp(uint32_t a_key)
         float heldDuration = std::chrono::duration<float>(now - rKeyTime).count();
         SKSE::log::info("R key up -- throwing (held {:.2f}s)", heldDuration);
         ThrowGrabbedObject(heldDuration);
+        auto player = RE::PlayerCharacter::GetSingleton();
+        if (player) {
+            player->AsMagicTarget()->DispelEffectsWithArchetype(RE::EffectArchetype::kGrabActor, true);
+        }
         if (grabbedActor) {
             grabbedActor->AsMagicTarget()->DispelEffectsWithArchetype(RE::EffectArchetype::kGrabActor, true);
+            grabbedActor->AsActorValueOwner()->SetActorValue(RE::ActorValue::kParalysis, 0.0f);
         }
         RE::DebugNotification("Threw!");
         grabbedActor = nullptr;
@@ -243,6 +250,7 @@ bool DragHandler::ReleaseNPC(bool a_throw, float a_force)
 
     if (grabbedActor) {
         grabbedActor->AsMagicTarget()->DispelEffectsWithArchetype(RE::EffectArchetype::kGrabActor, true);
+        grabbedActor->AsActorValueOwner()->SetActorValue(RE::ActorValue::kParalysis, 0.0f);
     }
 
     SKSE::log::info("Released (throw={}, force={:.1f})", a_throw, a_force);
