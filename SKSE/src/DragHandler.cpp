@@ -23,23 +23,7 @@ bool DragHandler::LoadSettings()
 
 void DragHandler::OnDataLoad()
 {
-    auto gmstCollection = RE::GameSettingCollection::GetSingleton();
-
-    auto set_gmst = [&](const char* setting, float value) {
-        if (auto gmst = gmstCollection->GetSetting(setting)) {
-            SKSE::log::info("GMST {}: {} -> {}", setting, gmst->GetFloat(), value);
-            gmst->data.f = value;
-        }
-    };
-
-    set_gmst("fZKeyMaxForce", fZKeyMaxForce);
-    set_gmst("fZKeyMaxContactDistance", fZKeyMaxContactDistance);
-    set_gmst("fZKeyObjectDamping", fZKeyObjectDamping);
-    set_gmst("fZKeySpringDamping", fZKeySpringDamping);
-    set_gmst("fZKeySpringElasticity", fZKeySpringElasticity);
-    set_gmst("fZKeyHeavyWeight", fZKeyHeavyWeight);
-
-    SKSE::log::info("Data loaded, GMSTs applied");
+    SKSE::log::info("Data loaded (GMST tuning skipped — using engine defaults)");
 }
 
 bool DragHandler::IsValidTarget(RE::Actor* a_actor) const

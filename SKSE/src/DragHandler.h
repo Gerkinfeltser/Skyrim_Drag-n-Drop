@@ -54,10 +54,4 @@ private:
     float throwImpulseBase{ 250.0f };
     float throwImpulseMax{ 1000.0f };
     float throwStrengthMult{ 500.0f };
-    float fZKeyMaxContactDistance{ 30.0f };
-    float fZKeyMaxForce{ 175.0f };
-    float fZKeyObjectDamping{ 0.75f };
-    float fZKeySpringDamping{ 0.5f };
-    float fZKeySpringElasticity{ 0.2f };
-    float fZKeyHeavyWeight{ 100.0f };
 };
