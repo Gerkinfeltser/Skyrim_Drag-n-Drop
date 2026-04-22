@@ -35,6 +35,7 @@ public:
 
 private:
     void DrainStamina(float a_dt);
+    void ZeroGrabbedVelocity(RE::PlayerCharacter* a_player);
     void ThrowGrabbedObject(float a_heldDuration);
     RE::hkVector4 GetImpulse(float a_force, float a_mass) const;
     float GetForce(float a_heldDuration) const;

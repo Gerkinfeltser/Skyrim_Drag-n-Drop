@@ -103,6 +103,33 @@ RE::hkVector4 DragHandler::GetImpulse(float a_force, float a_mass) const
     return velocity * a_mass;
 }
 
+void DragHandler::ZeroGrabbedVelocity(RE::PlayerCharacter* a_player)
+{
+    if (!a_player) return;
+
+    auto cell = a_player->GetParentCell();
+    auto bhkWorld = cell ? cell->GetbhkWorld() : nullptr;
+    if (!bhkWorld) return;
+
+    RE::BSWriteLockGuard locker(bhkWorld->worldLock);
+
+    auto& grabSpring = a_player->GetPlayerRuntimeData().grabSpring;
+    for (auto& springRef : grabSpring) {
+        if (!springRef) continue;
+
+        auto bhkObj = reinterpret_cast<RE::bhkRefObject*>(springRef.get());
+        if (!bhkObj || !bhkObj->referencedObject) continue;
+
+        auto actionBase = reinterpret_cast<std::uintptr_t>(bhkObj->referencedObject.get());
+        auto entityPtr = *reinterpret_cast<RE::hkpEntity**>(actionBase + 0x30);
+        if (!entityPtr) continue;
+
+        auto hkpRigidBody = reinterpret_cast<RE::hkpRigidBody*>(entityPtr);
+        hkpRigidBody->motion.SetLinearVelocity(RE::hkVector4());
+        hkpRigidBody->motion.SetAngularVelocity(RE::hkVector4());
+    }
+}
+
 void DragHandler::ThrowGrabbedObject(float a_heldDuration)
 {
     auto player = RE::PlayerCharacter::GetSingleton();
@@ -202,6 +229,7 @@ void DragHandler::OnKeyUp(uint32_t a_key)
         SKSE::log::info("G key up -- releasing (no throw)");
         auto player = RE::PlayerCharacter::GetSingleton();
         if (player) {
+            ZeroGrabbedVelocity(player);
             player->DestroyMouseSprings();
             player->AsMagicTarget()->DispelEffectsWithArchetype(RE::EffectArchetype::kGrabActor, true);
         }
