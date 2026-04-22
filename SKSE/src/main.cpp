@@ -36,15 +36,6 @@ namespace
         }
     }
 
-    bool GrabNPC(RE::StaticFunctionTag*, RE::Actor* a_target)
-    {
-        if (!a_target) {
-            SKSE::log::warn("GrabNPC: null target");
-            return false;
-        }
-        return DragHandler::GetSingleton()->GrabNPC(a_target);
-    }
-
     bool ReleaseNPC(RE::StaticFunctionTag*)
     {
         return DragHandler::GetSingleton()->ReleaseNPC(false, 0.0f);
@@ -67,7 +58,6 @@ namespace
 
     bool RegisterPapyrusFunctions(RE::BSScript::IVirtualMachine* a_vm)
     {
-        a_vm->RegisterFunction("GrabNPC", "DragDrop", GrabNPC);
         a_vm->RegisterFunction("ReleaseNPC", "DragDrop", ReleaseNPC);
         a_vm->RegisterFunction("ThrowNPC", "DragDrop", ThrowNPC);
         a_vm->RegisterFunction("GetGrabbedNPC", "DragDrop", GetGrabbedNPC);

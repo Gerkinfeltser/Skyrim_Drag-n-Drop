@@ -10,21 +10,11 @@ namespace Hooks
             static void thunk(RE::ActivateHandler* a_this, RE::ButtonEvent* a_event, RE::PlayerControlsData* a_data)
             {
                 auto handler = DragHandler::GetSingleton();
+                handler->UpdateGrabState();
 
-                if (handler->IsDragging()) {
-                    if (a_event->IsUp()) {
-                        handler->OnGrabKeyReleased();
-                        return;
-                    }
+                if (handler->IsDragging() && a_event->IsUp()) {
+                    handler->OnGrabKeyReleased();
                     return;
-                }
-
-                if (a_event->IsDown() && !handler->IsDragging()) {
-                    auto target = handler->GetCrosshairActor();
-                    if (target) {
-                        handler->GrabNPC(target);
-                        return;
-                    }
                 }
 
                 return func(a_this, a_event, a_data);

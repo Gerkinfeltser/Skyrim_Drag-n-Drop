@@ -1,0 +1,51 @@
+FormKey: 000801:DragAndDrop.esp
+EditorID: DragDropGrabEffect
+Name:
+  TargetLanguage: English
+  Value: Drag NPC
+MenuDisplayObject: 1097CB:Skyrim.esm
+Flags:
+- Hostile
+- Recover
+- Painless
+Archetype:
+  MutagenObjectType: MagicEffectArchetype
+  Type: GrabActor
+CastType: FireAndForget
+DualCastScale: 1
+CastingSoundLevel: Silent
+Sounds: []
+Description:
+  TargetLanguage: English
+  Value: Grab an NPC to drag them.
+Conditions:
+- MutagenObjectType: ConditionFloat
+  Flags:
+  - OR
+  Data:
+    MutagenObjectType: GetActorValueConditionData
+    ActorValue: Paralysis
+  ComparisonValue: 1
+- MutagenObjectType: ConditionFloat
+  Flags:
+  - OR
+  Data:
+    MutagenObjectType: GetDeadConditionData
+  ComparisonValue: 1
+- MutagenObjectType: ConditionFloat
+  Flags:
+  - OR
+  Data:
+    MutagenObjectType: GetPlayerTeammateConditionData
+  ComparisonValue: 1
+- MutagenObjectType: ConditionFloat
+  Flags:
+  - OR
+  Data:
+    MutagenObjectType: IsChildConditionData
+  ComparisonValue: 1
+- MutagenObjectType: ConditionFloat
+  Data:
+    MutagenObjectType: GetDistanceConditionData
+    Target: 000014:Skyrim.esm
+  ComparisonValue: 150
