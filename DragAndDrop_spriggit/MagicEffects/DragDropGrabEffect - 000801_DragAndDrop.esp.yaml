@@ -9,21 +9,34 @@ Keywords:
 Flags:
 - Hostile
 - Recover
-- NoDuration
-- NoMagnitude
-- NoArea
 - Painless
 Archetype:
   MutagenObjectType: MagicEffectArchetype
   Type: GrabActor
-CastType: Concentration
+CastType: FireAndForget
 DualCastScale: 1
+EquipAbility: 000805:DragAndDrop.esp
 CastingSoundLevel: Silent
 Sounds: []
 Description:
   TargetLanguage: English
   Value: Grab an NPC to drag them.
 Conditions:
+- MutagenObjectType: ConditionFloat
+  CompareOperator: GreaterThan
+  Data:
+    MutagenObjectType: GetActorValueConditionData
+    RunOnType: Reference
+    Reference: 000014:Skyrim.esm
+    ActorValue: Stamina
+  ComparisonValue: 2
+- MutagenObjectType: ConditionFloat
+  Flags:
+  - OR
+  Data:
+    MutagenObjectType: GetIsIDConditionData
+    Object: 000007:Skyrim.esm
+  ComparisonValue: 1
 - MutagenObjectType: ConditionFloat
   Flags:
   - OR
@@ -50,6 +63,29 @@ Conditions:
     MutagenObjectType: IsChildConditionData
   ComparisonValue: 1
 - MutagenObjectType: ConditionFloat
+  Data:
+    MutagenObjectType: GetDetectedConditionData
+    TargetNpc: 000014:Skyrim.esm
+- MutagenObjectType: ConditionFloat
+  Flags:
+  - OR
+  Data:
+    MutagenObjectType: GetIsIDConditionData
+    Object: 000007:Skyrim.esm
+  ComparisonValue: 1
+- MutagenObjectType: ConditionFloat
+  Data:
+    MutagenObjectType: HasKeywordConditionData
+    Keyword: 0D205E:Skyrim.esm
+- MutagenObjectType: ConditionFloat
+  Data:
+    MutagenObjectType: HasKeywordConditionData
+    Keyword: 0F23C5:Skyrim.esm
+- MutagenObjectType: ConditionFloat
+  Data:
+    MutagenObjectType: GetPairedAnimationConditionData
+- MutagenObjectType: ConditionFloat
+  CompareOperator: LessThanOrEqualTo
   Data:
     MutagenObjectType: GetDistanceConditionData
     Target: 000014:Skyrim.esm

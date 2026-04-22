@@ -3,33 +3,42 @@
 
 namespace Hooks
 {
-    namespace GrabRelease
+    struct InputEventSink : public RE::BSTEventSink<RE::InputEvent*>
     {
-        struct ActivateButton
+        RE::BSEventNotifyControl ProcessEvent(RE::InputEvent* const* a_event, RE::BSTEventSource<RE::InputEvent*>* a_source) override
         {
-            static void thunk(RE::ActivateHandler* a_this, RE::ButtonEvent* a_event, RE::PlayerControlsData* a_data)
-            {
-                DragHandler::GetSingleton()->UpdateGrabState();
-                return func(a_this, a_event, a_data);
+            if (!a_event || !*a_event) return RE::BSEventNotifyControl::kContinue;
+
+            auto handler = DragHandler::GetSingleton();
+
+            for (auto ev = *a_event; ev; ev = ev->next) {
+                if (ev->GetEventType() != RE::INPUT_EVENT_TYPE::kButton) continue;
+
+                auto btn = static_cast<RE::ButtonEvent*>(ev);
+                if (btn->IsDown()) {
+                    handler->OnKeyDown(btn->idCode);
+                } else if (btn->IsUp()) {
+                    handler->OnKeyUp(btn->idCode);
+                }
             }
-            static inline REL::Relocation<decltype(thunk)> func;
-            static inline constexpr std::size_t idx = 0x4;
-        };
 
-        void Install()
-        {
-            SKSE::log::info("Installing grab hooks");
-
-            REL::Relocation<std::uintptr_t> activateVtbl{ RE::VTABLE_ActivateHandler[0] };
-            ActivateButton::func = activateVtbl.write_vfunc(ActivateButton::idx, ActivateButton::thunk);
-
-            SKSE::log::info("Grab hooks installed");
+            handler->UpdateGrabState();
+            return RE::BSEventNotifyControl::kContinue;
         }
-    }
+    };
+
+    static InputEventSink g_inputSink;
 
     void Install()
     {
-        SKSE::AllocTrampoline(14);
-        GrabRelease::Install();
+        SKSE::log::info("Installing input event sink");
+
+        auto inputMgr = RE::BSInputDeviceManager::GetSingleton();
+        if (inputMgr) {
+            inputMgr->AddEventSink(&g_inputSink);
+            SKSE::log::info("Input event sink installed");
+        } else {
+            SKSE::log::error("BSInputDeviceManager not found");
+        }
     }
 }

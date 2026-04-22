@@ -1,24 +1,22 @@
-FormKey: 000803:DragAndDrop.esp
-EditorID: DragDropReleaseEffect
+FormKey: 000804:DragAndDrop.esp
+EditorID: DragDropEquipEffect
 Name:
   TargetLanguage: English
-  Value: Drag Drop Release
+  Value: Drag Drop Equip Effect
 Flags:
 - NoHitEvent
 - NoDuration
 - NoMagnitude
 - NoArea
+- NoRecast
 - Painless
 - NoHitEffect
 Archetype:
   MutagenObjectType: MagicEffectArchetype
   Type: Script
-CastType: FireAndForget
 DualCastScale: 1
 CastingSoundLevel: Silent
 Sounds: []
-Scripts:
-- Name: DragDropReleaseScript
 Description:
   TargetLanguage: English
   Value: ''

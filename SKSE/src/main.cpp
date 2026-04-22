@@ -3,7 +3,7 @@
 
 namespace
 {
-    constexpr auto VERSION = "0.5.0-alpha";
+    constexpr auto VERSION = "0.1.4-alpha";
     constexpr auto BUILD = __DATE__ " " __TIME__;
 
     void InitializeLog()
@@ -27,6 +27,8 @@ namespace
         switch (a_message->type) {
         case SKSE::MessagingInterface::kPostLoad:
             DragHandler::GetSingleton()->LoadSettings();
+            break;
+        case SKSE::MessagingInterface::kInputLoaded:
             Hooks::Install();
             SKSE::log::info("Hooks installed");
             break;
@@ -37,51 +39,6 @@ namespace
         default:
             break;
         }
-    }
-
-    bool ReleaseGrabbedActor(RE::StaticFunctionTag*)
-    {
-        auto player = RE::PlayerCharacter::GetSingleton();
-        if (!player) return false;
-
-        auto processLists = RE::ProcessLists::GetSingleton();
-        if (!processLists) return false;
-
-        auto playerPos = player->GetPosition();
-
-        processLists->ForAllActors([&](RE::Actor& actor) {
-            if (&actor == player) return RE::BSContainer::ForEachResult::kContinue;
-
-            float paralysis = actor.AsActorValueOwner()->GetActorValue(RE::ActorValue::kParalysis);
-            if (paralysis <= 0) return RE::BSContainer::ForEachResult::kContinue;
-
-            float distance = playerPos.GetSquaredDistance(actor.GetPosition());
-            if (distance > 22500.0f) return RE::BSContainer::ForEachResult::kContinue;
-
-            auto actorPos = actor.GetPosition();
-            auto dir = actorPos - playerPos;
-            float len = std::sqrt(dir.x * dir.x + dir.y * dir.y + dir.z * dir.z);
-            if (len < 0.01f) {
-                dir.x = 1.0f; dir.y = 0.0f; dir.z = 0.0f;
-            } else {
-                dir.x /= len; dir.y /= len; dir.z /= len;
-            }
-
-            RE::NiPoint3 farPos = actorPos;
-            farPos.x += dir.x * 500.0f;
-            farPos.y += dir.y * 500.0f;
-            farPos.z += dir.z * 500.0f;
-
-            actor.SetPosition(farPos, true);
-            actor.AsActorValueOwner()->SetActorValue(RE::ActorValue::kParalysis, 0.0f);
-            actor.SetPosition(actorPos, true);
-
-            SKSE::log::info("Released actor via teleport");
-            return RE::BSContainer::ForEachResult::kStop;
-        });
-
-        player->DestroyMouseSprings();
-        return true;
     }
 
     bool ReleaseNPC(RE::StaticFunctionTag*)
@@ -106,7 +63,6 @@ namespace
 
     bool RegisterPapyrusFunctions(RE::BSScript::IVirtualMachine* a_vm)
     {
-        a_vm->RegisterFunction("ReleaseGrabbedActor", "DragDrop", ReleaseGrabbedActor);
         a_vm->RegisterFunction("ReleaseNPC", "DragDrop", ReleaseNPC);
         a_vm->RegisterFunction("ThrowNPC", "DragDrop", ThrowNPC);
         a_vm->RegisterFunction("GetGrabbedNPC", "DragDrop", GetGrabbedNPC);

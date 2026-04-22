@@ -5,6 +5,9 @@ namespace
     constexpr RE::FormID GHOST_KEYWORD{ 0xD205E };
     constexpr RE::FormID IMMUNE_PARALYSIS_KEYWORD{ 0xF23C5 };
 
+    constexpr uint32_t KEY_G = 0x22;
+    constexpr uint32_t KEY_R = 0x13;
+
     RE::BGSKeyword* GetKeyword(RE::FormID a_formID)
     {
         auto factory = RE::TESForm::LookupByID(a_formID);
@@ -20,8 +23,23 @@ bool DragHandler::LoadSettings()
 
 void DragHandler::OnDataLoad()
 {
-    RE::DebugNotification("Drag & Drop v0.5 loaded");
-    SKSE::log::info("Data loaded");
+    auto gmstCollection = RE::GameSettingCollection::GetSingleton();
+
+    auto set_gmst = [&](const char* setting, float value) {
+        if (auto gmst = gmstCollection->GetSetting(setting)) {
+            SKSE::log::info("GMST {}: {} -> {}", setting, gmst->GetFloat(), value);
+            gmst->data.f = value;
+        }
+    };
+
+    set_gmst("fZKeyMaxForce", fZKeyMaxForce);
+    set_gmst("fZKeyMaxContactDistance", fZKeyMaxContactDistance);
+    set_gmst("fZKeyObjectDamping", fZKeyObjectDamping);
+    set_gmst("fZKeySpringDamping", fZKeySpringDamping);
+    set_gmst("fZKeySpringElasticity", fZKeySpringElasticity);
+    set_gmst("fZKeyHeavyWeight", fZKeyHeavyWeight);
+
+    SKSE::log::info("Data loaded, GMSTs applied");
 }
 
 bool DragHandler::IsValidTarget(RE::Actor* a_actor) const
@@ -81,6 +99,68 @@ void DragHandler::DrainStamina(float a_dt)
     }
 }
 
+float DragHandler::GetForce(float a_heldDuration) const
+{
+    float force = (a_heldDuration * throwStrengthMult);
+    if (force > throwImpulseMax) {
+        force = throwImpulseMax;
+    }
+    return force + throwImpulseBase;
+}
+
+RE::hkVector4 DragHandler::GetImpulse(float a_force, float a_mass) const
+{
+    RE::NiMatrix3 matrix = RE::PlayerCamera::GetSingleton()->cameraRoot->world.rotate;
+    float x = (matrix.entry[0][1] * a_force) * BS_TO_HK_SCALE;
+    float y = (matrix.entry[1][1] * a_force) * BS_TO_HK_SCALE;
+    float z = (matrix.entry[2][1] * a_force) * BS_TO_HK_SCALE;
+
+    RE::hkVector4 velocity(x, y, z, 0);
+    return velocity * a_mass;
+}
+
+void DragHandler::ThrowGrabbedObject(float a_heldDuration)
+{
+    auto player = RE::PlayerCharacter::GetSingleton();
+    if (!player) return;
+
+    auto cell = player->GetParentCell();
+    auto bhkWorld = cell ? cell->GetbhkWorld() : nullptr;
+    if (!bhkWorld) return;
+
+    RE::BSWriteLockGuard locker(bhkWorld->worldLock);
+
+    float force = GetForce(a_heldDuration);
+
+    auto& grabSpring = player->GetPlayerRuntimeData().grabSpring;
+
+    for (auto& springRef : grabSpring) {
+        if (!springRef) continue;
+
+        auto bhkObj = reinterpret_cast<RE::bhkRefObject*>(springRef.get());
+        if (!bhkObj || !bhkObj->referencedObject) continue;
+
+        auto hkpAction = static_cast<RE::hkpArrayAction*>(bhkObj->referencedObject.get());
+        if (!hkpAction || hkpAction->entities.size() == 0) continue;
+
+        auto hkpRigidBody = reinterpret_cast<RE::hkpRigidBody*>(hkpAction->entities[0]);
+        if (!hkpRigidBody) continue;
+
+        float mass = hkpRigidBody->motion.GetMass();
+        auto impulse = GetImpulse(force, mass);
+
+        hkpRigidBody->motion.SetLinearVelocity(RE::hkVector4());
+        hkpRigidBody->motion.SetAngularVelocity(RE::hkVector4());
+        hkpRigidBody->motion.ApplyLinearImpulse(impulse);
+
+        SKSE::log::info("Throw applied: force={:.1f}, mass={:.1f}, impulse=({:.1f},{:.1f},{:.1f})",
+            force, mass,
+            impulse.quad.m128_f32[0], impulse.quad.m128_f32[1], impulse.quad.m128_f32[2]);
+    }
+
+    player->DestroyMouseSprings();
+}
+
 void DragHandler::UpdateGrabState()
 {
     auto player = RE::PlayerCharacter::GetSingleton();
@@ -93,36 +173,74 @@ void DragHandler::UpdateGrabState()
             if (grabbedActor) {
                 state = State::Dragging;
                 std::string name = grabbedActor->GetDisplayFullName();
-                SKSE::log::info("Detected grab: {}", name);
+                SKSE::log::info("Grabbed: {} ({:08X})", name, grabbedActor->GetFormID());
             }
         }
     } else if (state == State::Dragging && !player->IsGrabbing()) {
-        std::string name = grabbedActor ? grabbedActor->GetDisplayFullName() : "NPC";
-        SKSE::log::info("Released: {}", name);
+        SKSE::log::info("Grab lost (engine released)");
         grabbedActor = nullptr;
         state = State::None;
+        rKeyHeld = false;
+        rKeyHoldTime = 0.0f;
+    }
+}
+
+void DragHandler::OnKeyDown(uint32_t a_key)
+{
+    if (a_key == KEY_R && state == State::Dragging) {
+        rKeyHeld = true;
+        rKeyHoldTime = 0.0f;
+        SKSE::log::info("R key down, charging throw");
+    }
+}
+
+void DragHandler::OnKeyUp(uint32_t a_key)
+{
+    if (a_key == KEY_G && state == State::Dragging) {
+        SKSE::log::info("G key up -- releasing (no throw)");
+        auto player = RE::PlayerCharacter::GetSingleton();
+        if (player) {
+            player->DestroyMouseSprings();
+        }
+        grabbedActor = nullptr;
+        state = State::None;
+        rKeyHeld = false;
+        rKeyHoldTime = 0.0f;
+        RE::DebugNotification("Released");
+        return;
+    }
+
+    if (a_key == KEY_R && state == State::Dragging && rKeyHeld) {
+        float heldDuration = rKeyHoldTime;
+        SKSE::log::info("R key up -- throwing (held {:.2f}s)", heldDuration);
+        ThrowGrabbedObject(heldDuration);
+        RE::DebugNotification("Threw!");
+        grabbedActor = nullptr;
+        state = State::None;
+        rKeyHeld = false;
+        rKeyHoldTime = 0.0f;
     }
 }
 
 bool DragHandler::ReleaseNPC(bool a_throw, float a_force)
 {
     if (state == State::None) return false;
-    state = State::None;
-    grabbedActor = nullptr;
-    return true;
-}
 
-void DragHandler::OnGrabKeyHeld(float a_heldDuration)
-{
-    if (state == State::Dragging) {
-        DrainStamina(0.016f);
+    auto player = RE::PlayerCharacter::GetSingleton();
+
+    if (a_throw && player) {
+        ThrowGrabbedObject(a_force > 0.0f ? a_force / throwStrengthMult : 0.5f);
+    } else if (player) {
+        player->DestroyMouseSprings();
     }
-}
 
-void DragHandler::OnGrabKeyReleased()
-{
-}
+    SKSE::log::info("Released (throw={}, force={:.1f})", a_throw, a_force);
 
-void DragHandler::OnThrowKeyReleased(float a_heldDuration)
-{
+    RE::DebugNotification(a_throw ? "Threw!" : "Released");
+    grabbedActor = nullptr;
+    state = State::None;
+    rKeyHeld = false;
+    rKeyHoldTime = 0.0f;
+
+    return true;
 }

@@ -20,26 +20,31 @@ public:
     RE::Actor* GetGrabbedActor() const { return grabbedActor; }
     bool IsDragging() const { return state != State::None; }
 
-    void OnGrabKeyHeld(float a_heldDuration);
-    void OnGrabKeyReleased();
-    void OnThrowKeyReleased(float a_heldDuration);
-
+    void OnKeyDown(uint32_t a_key);
+    void OnKeyUp(uint32_t a_key);
     bool IsValidTarget(RE::Actor* a_actor) const;
     RE::Actor* GetCrosshairActor() const;
 
     enum class State
     {
         None,
-        Dragging,
-        ReadyToThrow
+        Dragging
     };
 
 private:
     void DrainStamina(float a_dt);
+    void ThrowGrabbedObject(float a_heldDuration);
+    RE::hkVector4 GetImpulse(float a_force, float a_mass) const;
+    float GetForce(float a_heldDuration) const;
+
+    static constexpr float BS_TO_HK_SCALE{ 0.0142875f };
+    static constexpr float HK_TO_BS_SCALE{ 69.991251f };
 
     RE::Actor* grabbedActor{ nullptr };
     State state{ State::None };
-    float throwHoldTime{ 0.0f };
+
+    bool rKeyHeld{ false };
+    float rKeyHoldTime{ 0.0f };
 
     bool enabled{ true };
     float staminaDrainRate{ 5.0f };
@@ -47,4 +52,10 @@ private:
     float throwImpulseBase{ 250.0f };
     float throwImpulseMax{ 1000.0f };
     float throwStrengthMult{ 500.0f };
+    float fZKeyMaxContactDistance{ 30.0f };
+    float fZKeyMaxForce{ 175.0f };
+    float fZKeyObjectDamping{ 0.75f };
+    float fZKeySpringDamping{ 0.5f };
+    float fZKeySpringElasticity{ 0.2f };
+    float fZKeyHeavyWeight{ 100.0f };
 };
