@@ -117,7 +117,9 @@ void DragHandler::DrainStamina(float a_dt)
 
 float DragHandler::GetForce(float a_heldDuration) const
 {
-    float force = a_heldDuration * throwStrengthMult;
+    float effective = a_heldDuration - 0.5f;
+    if (effective < 0.0f) effective = 0.0f;
+    float force = effective * throwStrengthMult;
     if (force > throwImpulseMax) {
         force = throwImpulseMax;
     }
@@ -182,8 +184,6 @@ void DragHandler::ThrowGrabbedObject(float a_heldDuration)
 
     SKSE::log::info("ThrowGrabbedObject: force={:.1f}", force);
 
-    RE::hkpRigidBody* springBody = nullptr;
-
     for (auto& springRef : grabSpring) {
         if (!springRef) continue;
 
@@ -194,26 +194,14 @@ void DragHandler::ThrowGrabbedObject(float a_heldDuration)
         auto entityPtr = *reinterpret_cast<RE::hkpEntity**>(actionBase + 0x30);
         if (!entityPtr) continue;
 
-        springBody = reinterpret_cast<RE::hkpRigidBody*>(entityPtr);
-        break;
-    }
-
-    if (springBody) {
-        float mass = springBody->motion.GetMass();
+        auto hkpRigidBody = reinterpret_cast<RE::hkpRigidBody*>(entityPtr);
+        float mass = hkpRigidBody->motion.GetMass();
         auto impulse = GetImpulse(force, mass);
-        springBody->motion.ApplyLinearImpulse(impulse);
+        hkpRigidBody->motion.ApplyLinearImpulse(impulse);
 
         SKSE::log::info("Throw applied: force={:.1f}, mass={:.1f}, impulse=({:.1f},{:.1f},{:.1f})",
             force, mass,
             impulse.quad.m128_f32[0], impulse.quad.m128_f32[1], impulse.quad.m128_f32[2]);
-    }
-
-    auto allBodies = CollectAllRigidBodies(grabbedActor);
-    for (auto* body : allBodies) {
-        if (body && body != springBody) {
-            body->motion.SetLinearVelocity(RE::hkVector4());
-            body->motion.SetAngularVelocity(RE::hkVector4());
-        }
     }
 
     player->DestroyMouseSprings();
@@ -223,41 +211,42 @@ void DragHandler::ForceRagdoll(RE::Actor* a_actor)
 {
     if (!a_actor) return;
 
-    auto formID = a_actor->GetFormID();
-    if (ragdollForced.count(formID)) return;
-
-    SKSE::log::info("Forcing ragdoll on actor {:08X} (dead={}, ragdollState={})",
-        formID, a_actor->IsDead(), a_actor->IsInRagdollState());
-
-    a_actor->NotifyAnimationGraph("ragdoll");
+    SKSE::log::info("ForceRagdoll: {:08X} (dead={}, ragdollState={})",
+        a_actor->GetFormID(), a_actor->IsDead(), a_actor->IsInRagdollState());
 
     RE::BSTSmartPointer<RE::BSAnimationGraphManager> graphManager;
-    if (!a_actor->GetAnimationGraphManager(graphManager) || !graphManager) {
-        SKSE::log::info("  No animation graph manager");
-        return;
-    }
-
-    for (auto& graphPtr : graphManager->graphs) {
-        if (!graphPtr) continue;
-
-        auto* ragdollDriver = static_cast<RE::BSIRagdollDriver*>(graphPtr.get());
-        if (!ragdollDriver) continue;
-
-        if (ragdollDriver->HasRagdoll()) {
-            ragdollDriver->AddRagdollToWorld();
-            ragdollDriver->SetMotionType(RE::hkpMotion::MotionType::kDynamic);
-            SKSE::log::info("  Ragdoll added to world, motion set to dynamic");
-        } else {
-            SKSE::log::info("  No ragdoll data on this graph");
+    if (a_actor->GetAnimationGraphManager(graphManager) && graphManager) {
+        for (auto& graphPtr : graphManager->graphs) {
+            if (!graphPtr) continue;
+            auto* driver = static_cast<RE::BSIRagdollDriver*>(graphPtr.get());
+            if (driver && driver->HasRagdoll()) {
+                driver->AddRagdollToWorld();
+                driver->SetMotionType(RE::hkpMotion::MotionType::kDynamic);
+                SKSE::log::info("  Ragdoll driver: added to world, motion=dynamic");
+            }
         }
     }
 
     auto root = a_actor->Get3D();
     if (root) {
         root->UpdateRigidConstraints(true);
-    }
 
-    ragdollForced.insert(formID);
+        int bodyCount = 0;
+        RE::BSVisit::TraverseScenegraphCollision(root, [&](RE::bhkNiCollisionObject* a_colObj) {
+            if (!a_colObj) return RE::BSVisit::BSVisitControl::kContinue;
+            auto colObj = static_cast<RE::bhkCollisionObject*>(a_colObj);
+            auto rigidBody = colObj->GetRigidBody();
+            if (rigidBody && rigidBody->referencedObject) {
+                auto hkpBody = reinterpret_cast<RE::hkpRigidBody*>(rigidBody->referencedObject.get());
+                if (hkpBody) {
+                    hkpBody->motion.type = RE::hkpMotion::MotionType::kDynamic;
+                    bodyCount++;
+                }
+            }
+            return RE::BSVisit::BSVisitControl::kContinue;
+        });
+        SKSE::log::info("  Set {} bodies to kDynamic", bodyCount);
+    }
 }
 
 void DragHandler::UpdateGrabState()
@@ -274,11 +263,6 @@ void DragHandler::UpdateGrabState()
                 std::string name = grabbedActor->GetDisplayFullName();
                 SKSE::log::info("Grabbed: {} ({:08X})", name, grabbedActor->GetFormID());
             }
-        }
-    } else if (state == State::None) {
-        auto closest = GetCrosshairActor();
-        if (closest && !closest->IsInRagdollState()) {
-            ForceRagdoll(closest);
         }
     }
 

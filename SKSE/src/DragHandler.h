@@ -1,7 +1,6 @@
 #pragma once
 
 #include <chrono>
-#include <unordered_set>
 
 #include "RE/Skyrim.h"
 #include "SKSE/SKSE.h"
@@ -46,7 +45,6 @@ private:
     static constexpr float HK_TO_BS_SCALE{ 69.991251f };
 
     RE::Actor* grabbedActor{ nullptr };
-    std::unordered_set<RE::FormID> ragdollForced;
     State state{ State::None };
 
     bool rKeyHeld{ false };
@@ -56,6 +54,6 @@ private:
     bool enabled{ true };
     float staminaDrainRate{ 5.0f };
 
-    float throwImpulseMax{ 10.0f };
-    float throwStrengthMult{ 2.5f };
+    float throwImpulseMax{ 4.0f };
+    float throwStrengthMult{ 1.0f };
 };
