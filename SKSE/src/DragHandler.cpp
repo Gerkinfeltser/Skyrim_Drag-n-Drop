@@ -3,6 +3,10 @@
 #include <cstdio>
 #include <vector>
 
+#include "RE/B/BSVisit.h"
+#include "RE/B/bhkCollisionObject.h"
+#include "RE/B/bhkRigidBody.h"
+
 namespace
 {
     constexpr RE::FormID GHOST_KEYWORD{ 0xD205E };
@@ -15,6 +19,30 @@ namespace
     {
         auto factory = RE::TESForm::LookupByID(a_formID);
         return factory ? factory->As<RE::BGSKeyword>() : nullptr;
+    }
+
+    std::vector<RE::hkpRigidBody*> CollectAllRigidBodies(RE::Actor* a_actor)
+    {
+        std::vector<RE::hkpRigidBody*> bodies;
+        if (!a_actor) return bodies;
+
+        auto root = a_actor->Get3D();
+        if (!root) return bodies;
+
+        RE::BSVisit::TraverseScenegraphCollision(root, [&](RE::bhkNiCollisionObject* a_colObj) {
+            if (!a_colObj) return RE::BSVisit::BSVisitControl::kContinue;
+
+            auto colObj = static_cast<RE::bhkCollisionObject*>(a_colObj);
+            auto rigidBody = colObj->GetRigidBody();
+            if (rigidBody && rigidBody->referencedObject) {
+                auto hkpBody = reinterpret_cast<RE::hkpRigidBody*>(rigidBody->referencedObject.get());
+                if (hkpBody) bodies.push_back(hkpBody);
+            }
+            return RE::BSVisit::BSVisitControl::kContinue;
+        });
+
+        SKSE::log::info("Collected {} rigid bodies from actor scene graph", bodies.size());
+        return bodies;
     }
 }
 
@@ -234,6 +262,9 @@ void DragHandler::OnKeyUp(uint32_t a_key)
     if (a_key == KEY_G && state == State::Dragging) {
         SKSE::log::info("G key up -- releasing (no throw)");
         auto player = RE::PlayerCharacter::GetSingleton();
+
+        std::vector<RE::hkpRigidBody*> bodiesToZero = CollectAllRigidBodies(grabbedActor);
+
         if (player) {
             player->DestroyMouseSprings();
             player->AsMagicTarget()->DispelEffectsWithArchetype(RE::EffectArchetype::kGrabActor, true);
@@ -242,6 +273,25 @@ void DragHandler::OnKeyUp(uint32_t a_key)
             grabbedActor->AsMagicTarget()->DispelEffectsWithArchetype(RE::EffectArchetype::kGrabActor, true);
             grabbedActor->AsActorValueOwner()->SetActorValue(RE::ActorValue::kParalysis, 0.0f);
         }
+
+        if (!bodiesToZero.empty()) {
+            SKSE::GetTaskInterface()->AddTask([bodiesToZero]() {
+                auto player = RE::PlayerCharacter::GetSingleton();
+                if (!player) return;
+                auto cell = player->GetParentCell();
+                auto bhkWorld = cell ? cell->GetbhkWorld() : nullptr;
+                if (!bhkWorld) return;
+                RE::BSWriteLockGuard locker(bhkWorld->worldLock);
+                for (auto* body : bodiesToZero) {
+                    if (body) {
+                        body->motion.SetLinearVelocity(RE::hkVector4());
+                        body->motion.SetAngularVelocity(RE::hkVector4());
+                    }
+                }
+                SKSE::log::info("Delayed velocity zero applied ({} bodies)", bodiesToZero.size());
+            });
+        }
+
         grabbedActor = nullptr;
         state = State::None;
         rKeyHeld = false;
@@ -255,14 +305,51 @@ void DragHandler::OnKeyUp(uint32_t a_key)
 
         if (heldDuration < 0.5f) {
             SKSE::log::info("R key tap -- treating as drop ({:.2f}s)", heldDuration);
-        } else {
-            float force = GetForce(heldDuration);
-            SKSE::log::info("R key up -- throwing (held {:.2f}s, force={:.0f})", heldDuration, force);
-            ThrowGrabbedObject(heldDuration);
-            char buf[64];
-            std::snprintf(buf, sizeof(buf), "Threw! (%.0f force)", force);
-            RE::DebugNotification(buf);
+
+            auto player = RE::PlayerCharacter::GetSingleton();
+            std::vector<RE::hkpRigidBody*> bodiesToZero = CollectAllRigidBodies(grabbedActor);
+
+            if (player) {
+                player->DestroyMouseSprings();
+                player->AsMagicTarget()->DispelEffectsWithArchetype(RE::EffectArchetype::kGrabActor, true);
+            }
+            if (grabbedActor) {
+                grabbedActor->AsMagicTarget()->DispelEffectsWithArchetype(RE::EffectArchetype::kGrabActor, true);
+                grabbedActor->AsActorValueOwner()->SetActorValue(RE::ActorValue::kParalysis, 0.0f);
+            }
+
+            if (!bodiesToZero.empty()) {
+                SKSE::GetTaskInterface()->AddTask([bodiesToZero]() {
+                    auto player = RE::PlayerCharacter::GetSingleton();
+                    if (!player) return;
+                    auto cell = player->GetParentCell();
+                    auto bhkWorld = cell ? cell->GetbhkWorld() : nullptr;
+                    if (!bhkWorld) return;
+                    RE::BSWriteLockGuard locker(bhkWorld->worldLock);
+                    for (auto* body : bodiesToZero) {
+                        if (body) {
+                            body->motion.SetLinearVelocity(RE::hkVector4());
+                            body->motion.SetAngularVelocity(RE::hkVector4());
+                        }
+                    }
+                    SKSE::log::info("Delayed velocity zero applied (R tap, {} bodies)", bodiesToZero.size());
+                });
+            }
+
+            grabbedActor = nullptr;
+            state = State::None;
+            rKeyHeld = false;
+            RE::DebugNotification("Dropped");
+            return;
         }
+
+        float force = GetForce(heldDuration);
+        SKSE::log::info("R key up -- throwing (held {:.2f}s, force={:.0f})", heldDuration, force);
+        ThrowGrabbedObject(heldDuration);
+
+        char buf[64];
+        std::snprintf(buf, sizeof(buf), "Threw! (%.0f force)", force);
+        RE::DebugNotification(buf);
 
         auto player = RE::PlayerCharacter::GetSingleton();
         if (player) {
