@@ -234,8 +234,6 @@ void DragHandler::OnKeyUp(uint32_t a_key)
         SKSE::log::info("G key up -- releasing (no throw)");
         auto player = RE::PlayerCharacter::GetSingleton();
         if (player) {
-            ZeroGrabbedVelocity(player);
-            player->DestroyMouseSprings();
             player->AsMagicTarget()->DispelEffectsWithArchetype(RE::EffectArchetype::kGrabActor, true);
         }
         if (grabbedActor) {
