@@ -3,7 +3,7 @@
 
 namespace
 {
-    constexpr auto VERSION = "0.1.17-alpha";
+    constexpr auto VERSION = "0.1.23-alpha";
     constexpr auto BUILD = __DATE__ " " __TIME__;
 
     void InitializeLog()
