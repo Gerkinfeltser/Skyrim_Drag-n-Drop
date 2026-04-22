@@ -87,11 +87,11 @@ void DragHandler::DrainStamina(float a_dt)
 
 float DragHandler::GetForce(float a_heldDuration) const
 {
-    float force = (a_heldDuration * throwStrengthMult);
+    float force = a_heldDuration * throwStrengthMult;
     if (force > throwImpulseMax) {
         force = throwImpulseMax;
     }
-    return force + throwImpulseBase;
+    return force;
 }
 
 RE::hkVector4 DragHandler::GetImpulse(float a_force, float a_mass) const
@@ -126,31 +126,13 @@ void DragHandler::ZeroGrabbedVelocity(RE::PlayerCharacter* a_player)
         auto entityPtr = *reinterpret_cast<RE::hkpEntity**>(actionBase + 0x30);
         if (!entityPtr) continue;
 
+        // Zero the spring's own force at offset 0x48 so it stops pulling
+        *reinterpret_cast<float*>(actionBase + 0x48) = 0.0f;
+
         auto hkpRigidBody = reinterpret_cast<RE::hkpRigidBody*>(entityPtr);
-        savedBodies.push_back(hkpRigidBody);
+        hkpRigidBody->motion.SetLinearVelocity(RE::hkVector4());
+        hkpRigidBody->motion.SetAngularVelocity(RE::hkVector4());
     }
-}
-
-void DragHandler::ZeroSavedBodies()
-{
-    if (savedBodies.empty()) return;
-
-    auto player = RE::PlayerCharacter::GetSingleton();
-    if (!player) { savedBodies.clear(); return; }
-
-    auto cell = player->GetParentCell();
-    auto bhkWorld = cell ? cell->GetbhkWorld() : nullptr;
-    if (!bhkWorld) { savedBodies.clear(); return; }
-
-    RE::BSWriteLockGuard locker(bhkWorld->worldLock);
-
-    for (auto* body : savedBodies) {
-        if (body) {
-            body->motion.SetLinearVelocity(RE::hkVector4());
-            body->motion.SetAngularVelocity(RE::hkVector4());
-        }
-    }
-    savedBodies.clear();
 }
 
 void DragHandler::ThrowGrabbedObject(float a_heldDuration)
@@ -254,7 +236,6 @@ void DragHandler::OnKeyUp(uint32_t a_key)
         if (player) {
             ZeroGrabbedVelocity(player);
             player->DestroyMouseSprings();
-            ZeroSavedBodies();
             player->AsMagicTarget()->DispelEffectsWithArchetype(RE::EffectArchetype::kGrabActor, true);
         }
         if (grabbedActor) {
@@ -298,7 +279,7 @@ bool DragHandler::ReleaseNPC(bool a_throw, float a_force)
     auto player = RE::PlayerCharacter::GetSingleton();
 
     if (a_throw && player) {
-        ThrowGrabbedObject(a_force > 0.0f ? a_force / throwStrengthMult : 0.5f);
+        ThrowGrabbedObject(a_force > 0.0f ? a_force : 1.0f);
     } else if (player) {
         player->DestroyMouseSprings();
     }
