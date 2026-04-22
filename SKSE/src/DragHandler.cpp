@@ -143,37 +143,28 @@ void DragHandler::ThrowGrabbedObject(float a_heldDuration)
         }
 
         auto bhkObj = reinterpret_cast<RE::bhkRefObject*>(springRef.get());
-        if (!bhkObj) {
-            SKSE::log::info("  bhkObj is null");
-            continue;
-        }
-        if (!bhkObj->referencedObject) {
-            SKSE::log::info("  bhkObj->referencedObject is null");
+        if (!bhkObj || !bhkObj->referencedObject) {
+            SKSE::log::info("  bhkObj or referencedObject null");
             continue;
         }
 
         auto hkObj = bhkObj->referencedObject.get();
-        SKSE::log::info("  hkObj ptr={}, RTTI={}", (void*)hkObj, hkObj ? "present" : "null");
 
-        auto hkpAction = static_cast<RE::hkpArrayAction*>(hkObj);
-        if (!hkpAction) {
-            SKSE::log::info("  hkpAction cast failed");
+        // hkpMouseSpringAction extends hkpAction (size 0x30).
+        // At offset 0x30: hkpEntity* m_entity (the grabbed rigid body)
+        // At offset 0x38: hkVector4 m_positionInWorld
+        // At offset 0x48: float m_force
+        auto actionBase = reinterpret_cast<std::uintptr_t>(hkObj);
+        auto entityPtr = *reinterpret_cast<RE::hkpEntity**>(actionBase + 0x30);
+
+        SKSE::log::info("  hkObj ptr={}, entityPtr={}", (void*)hkObj, (void*)entityPtr);
+
+        if (!entityPtr) {
+            SKSE::log::info("  entityPtr is null");
             continue;
         }
 
-        SKSE::log::info("  hkpAction->entities.size()={}", hkpAction->entities.size());
-
-        if (hkpAction->entities.size() == 0) {
-            SKSE::log::info("  entities empty");
-            continue;
-        }
-
-        auto hkpRigidBody = reinterpret_cast<RE::hkpRigidBody*>(hkpAction->entities[0]);
-        if (!hkpRigidBody) {
-            SKSE::log::info("  hkpRigidBody is null");
-            continue;
-        }
-
+        auto hkpRigidBody = reinterpret_cast<RE::hkpRigidBody*>(entityPtr);
         float mass = hkpRigidBody->motion.GetMass();
         auto impulse = GetImpulse(force, mass);
 
