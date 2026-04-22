@@ -40,6 +40,8 @@ private:
     void ForceRagdoll(RE::Actor* a_actor);
     RE::hkVector4 GetImpulse(float a_force, float a_mass) const;
     float GetForce(float a_heldDuration) const;
+    void ApplySpeedBoost(RE::PlayerCharacter* a_player);
+    void RestoreSpeed(RE::PlayerCharacter* a_player);
 
     static constexpr float BS_TO_HK_SCALE{ 0.0142875f };
     static constexpr float HK_TO_BS_SCALE{ 69.991251f };
@@ -47,16 +49,20 @@ private:
     RE::Actor* grabbedActor{ nullptr };
     State state{ State::None };
 
-    bool rKeyHeld{ false };
-    bool rNotified{ false };
-    std::chrono::steady_clock::time_point rKeyTime;
+    bool actionKeyHeld{ false };
+    bool actionNotified{ false };
+    std::chrono::steady_clock::time_point actionKeyTime;
 
+    uint32_t actionKey{ 0x22 };
     bool enabled{ true };
     float grabRange{ 150.0f };
     float staminaDrainRate{ 5.0f };
     bool grabFollowers{ true };
     bool grabChildren{ false };
     bool grabAnyone{ false };
+    bool noSpeedPenalty{ true };
+    float dragSpeedMult{ 3.0f };
+    float savedSpeedMult{ 0.0f };
 
     float throwImpulseMax{ 10.0f };
     float throwDropWindow{ 0.5f };
