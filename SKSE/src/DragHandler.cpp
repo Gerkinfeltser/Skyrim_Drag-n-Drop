@@ -1,6 +1,7 @@
 #include "DragHandler.h"
 
 #include <cstdio>
+#include <vector>
 
 namespace
 {
@@ -234,6 +235,29 @@ void DragHandler::OnKeyUp(uint32_t a_key)
         SKSE::log::info("G key up -- releasing (no throw)");
         auto player = RE::PlayerCharacter::GetSingleton();
         if (player) {
+            auto cell = player->GetParentCell();
+            auto bhkWorld = cell ? cell->GetbhkWorld() : nullptr;
+            if (bhkWorld) {
+                RE::BSWriteLockGuard locker(bhkWorld->worldLock);
+
+                auto& grabSpring = player->GetPlayerRuntimeData().grabSpring;
+                std::vector<RE::hkpRigidBody*> bodies;
+                for (auto& springRef : grabSpring) {
+                    if (!springRef) continue;
+                    auto bhkObj = reinterpret_cast<RE::bhkRefObject*>(springRef.get());
+                    if (!bhkObj || !bhkObj->referencedObject) continue;
+                    auto actionBase = reinterpret_cast<std::uintptr_t>(bhkObj->referencedObject.get());
+                    auto entityPtr = *reinterpret_cast<RE::hkpEntity**>(actionBase + 0x30);
+                    if (entityPtr) bodies.push_back(reinterpret_cast<RE::hkpRigidBody*>(entityPtr));
+                }
+
+                player->DestroyMouseSprings();
+
+                for (auto* body : bodies) {
+                    body->motion.SetLinearVelocity(RE::hkVector4());
+                    body->motion.SetAngularVelocity(RE::hkVector4());
+                }
+            }
             player->AsMagicTarget()->DispelEffectsWithArchetype(RE::EffectArchetype::kGrabActor, true);
         }
         if (grabbedActor) {
@@ -250,9 +274,18 @@ void DragHandler::OnKeyUp(uint32_t a_key)
     if (a_key == KEY_R && state == State::Dragging && rKeyHeld) {
         auto now = std::chrono::steady_clock::now();
         float heldDuration = std::chrono::duration<float>(now - rKeyTime).count();
-        float force = GetForce(heldDuration);
-        SKSE::log::info("R key up -- throwing (held {:.2f}s, force={:.0f})", heldDuration, force);
-        ThrowGrabbedObject(heldDuration);
+
+        if (heldDuration < 0.2f) {
+            SKSE::log::info("R key tap -- treating as drop ({:.2f}s)", heldDuration);
+        } else {
+            float force = GetForce(heldDuration);
+            SKSE::log::info("R key up -- throwing (held {:.2f}s, force={:.0f})", heldDuration, force);
+            ThrowGrabbedObject(heldDuration);
+            char buf[64];
+            std::snprintf(buf, sizeof(buf), "Threw! (%.0f force)", force);
+            RE::DebugNotification(buf);
+        }
+
         auto player = RE::PlayerCharacter::GetSingleton();
         if (player) {
             player->AsMagicTarget()->DispelEffectsWithArchetype(RE::EffectArchetype::kGrabActor, true);
@@ -261,9 +294,6 @@ void DragHandler::OnKeyUp(uint32_t a_key)
             grabbedActor->AsMagicTarget()->DispelEffectsWithArchetype(RE::EffectArchetype::kGrabActor, true);
             grabbedActor->AsActorValueOwner()->SetActorValue(RE::ActorValue::kParalysis, 0.0f);
         }
-        char buf[64];
-        std::snprintf(buf, sizeof(buf), "Threw! (%.0f force)", force);
-        RE::DebugNotification(buf);
         grabbedActor = nullptr;
         state = State::None;
         rKeyHeld = false;
