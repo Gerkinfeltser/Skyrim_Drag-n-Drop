@@ -54,6 +54,6 @@ private:
     bool enabled{ true };
     float staminaDrainRate{ 5.0f };
 
-    float throwImpulseMax{ 4.0f };
-    float throwStrengthMult{ 1.0f };
+    float throwImpulseMax{ 3.0f };
+    float throwStrengthMult{ 0.75f };
 };

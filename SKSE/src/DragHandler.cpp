@@ -129,12 +129,11 @@ float DragHandler::GetForce(float a_heldDuration) const
 RE::hkVector4 DragHandler::GetImpulse(float a_force, float a_mass) const
 {
     RE::NiMatrix3 matrix = RE::PlayerCamera::GetSingleton()->cameraRoot->world.rotate;
-    float x = (matrix.entry[0][1] * a_force) * BS_TO_HK_SCALE;
-    float y = (matrix.entry[1][1] * a_force) * BS_TO_HK_SCALE;
-    float z = (matrix.entry[2][1] * a_force) * BS_TO_HK_SCALE;
+    float x = matrix.entry[0][1] * a_force;
+    float y = matrix.entry[1][1] * a_force;
+    float z = matrix.entry[2][1] * a_force;
 
-    RE::hkVector4 velocity(x, y, z, 0);
-    return velocity * a_mass;
+    return RE::hkVector4(x, y, z, 0) * a_mass;
 }
 
 void DragHandler::ZeroGrabbedVelocity(RE::PlayerCharacter* a_player)
@@ -180,9 +179,17 @@ void DragHandler::ThrowGrabbedObject(float a_heldDuration)
 
     float force = GetForce(a_heldDuration);
 
+    auto allBodies = CollectAllRigidBodies(grabbedActor);
+    for (auto* body : allBodies) {
+        if (body) {
+            body->motion.SetLinearVelocity(RE::hkVector4());
+            body->motion.SetAngularVelocity(RE::hkVector4());
+        }
+    }
+
     auto& grabSpring = player->GetPlayerRuntimeData().grabSpring;
 
-    SKSE::log::info("ThrowGrabbedObject: force={:.1f}", force);
+    SKSE::log::info("ThrowGrabbedObject: force={:.1f}, bodies={}", force, allBodies.size());
 
     for (auto& springRef : grabSpring) {
         if (!springRef) continue;
