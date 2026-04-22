@@ -20,50 +20,8 @@ bool DragHandler::LoadSettings()
 
 void DragHandler::OnDataLoad()
 {
-    auto dataHandler = RE::TESDataHandler::GetSingleton();
-    if (!dataHandler) return;
-
-    auto& spells = dataHandler->GetFormArray(RE::FormType::Spell);
-    RE::SpellItem* grabSpell = nullptr;
-    for (auto& form : spells) {
-        if (!form) continue;
-        auto spell = form->As<RE::SpellItem>();
-        if (!spell) continue;
-        auto id = spell->GetFormEditorID();
-        if (id && strcmp(id, "DragDropGrabSpell") == 0) {
-            grabSpell = spell;
-            break;
-        }
-    }
-
-    if (grabSpell) {
-        auto player = RE::PlayerCharacter::GetSingleton();
-        if (player && !player->HasSpell(grabSpell)) {
-            player->AddSpell(grabSpell);
-            SKSE::log::info("Added DragDropGrabSpell to player");
-        }
-    } else {
-        SKSE::log::warn("DragDropGrabSpell not found");
-    }
-
-    auto gmst = RE::GameSettingCollection::GetSingleton();
-    if (!gmst) return;
-
-    auto set_gmst = [&](const char* name, float value) {
-        auto setting = gmst->GetSetting(name);
-        if (setting) {
-            SKSE::log::info("{}: {} -> {}", name, setting->GetFloat(), value);
-            setting->data.f = value;
-        }
-    };
-
-    set_gmst("fZKeyMaxForce", 500.0f);
-    set_gmst("fZKeySpringDamping", 5.0f);
-    set_gmst("fZKeySpringElasticity", 0.05f);
-    set_gmst("fZKeyObjectDamping", 0.95f);
-    set_gmst("fZKeyMaxContactDistance", 300.0f);
-
-    SKSE::log::info("Game settings applied for NPC drag");
+    RE::DebugNotification("Drag & Drop v0.5 loaded");
+    SKSE::log::info("Data loaded");
 }
 
 bool DragHandler::IsValidTarget(RE::Actor* a_actor) const
@@ -117,7 +75,6 @@ void DragHandler::DrainStamina(float a_dt)
     float currentStamina = player->AsActorValueOwner()->GetActorValue(RE::ActorValue::kStamina);
     float drain = staminaDrainRate * a_dt;
     if (currentStamina - drain <= 0.0f) {
-        ReleaseNPC(false, 0.0f);
         RE::DebugNotification("Too exhausted to keep holding");
     } else {
         player->AsActorValueOwner()->RestoreActorValue(RE::ACTOR_VALUE_MODIFIER::kDamage, RE::ActorValue::kStamina, -drain);
@@ -136,43 +93,22 @@ void DragHandler::UpdateGrabState()
             if (grabbedActor) {
                 state = State::Dragging;
                 std::string name = grabbedActor->GetDisplayFullName();
-                SKSE::log::info("Detected grab via spell: {}", name);
+                SKSE::log::info("Detected grab: {}", name);
             }
         }
     } else if (state == State::Dragging && !player->IsGrabbing()) {
+        std::string name = grabbedActor ? grabbedActor->GetDisplayFullName() : "NPC";
+        SKSE::log::info("Released: {}", name);
         grabbedActor = nullptr;
         state = State::None;
-        throwHoldTime = 0.0f;
     }
 }
 
 bool DragHandler::ReleaseNPC(bool a_throw, float a_force)
 {
     if (state == State::None) return false;
-
-    auto player = RE::PlayerCharacter::GetSingleton();
-    if (!player) return false;
-
-    player->DestroyMouseSprings();
-
-    if (grabbedActor) {
-        auto pos = grabbedActor->GetPosition();
-
-        grabbedActor->AsActorValueOwner()->SetActorValue(RE::ActorValue::kParalysis, 0.0f);
-
-        grabbedActor->AsActorValueOwner()->SetActorValue(RE::ActorValue::kParalysis, 100.0f);
-
-        grabbedActor->SetPosition(pos, true);
-    }
-
-    std::string name = grabbedActor ? grabbedActor->GetDisplayFullName() : "NPC";
-    RE::DebugNotification(std::format("Released {}", name).c_str());
-
-    grabbedActor = nullptr;
     state = State::None;
-    throwHoldTime = 0.0f;
-
-    SKSE::log::info("Released NPC (throw={})", a_throw);
+    grabbedActor = nullptr;
     return true;
 }
 
@@ -185,17 +121,8 @@ void DragHandler::OnGrabKeyHeld(float a_heldDuration)
 
 void DragHandler::OnGrabKeyReleased()
 {
-    if (state == State::Dragging || state == State::ReadyToThrow) {
-        ReleaseNPC(false, 0.0f);
-    }
 }
 
 void DragHandler::OnThrowKeyReleased(float a_heldDuration)
 {
-    if (state != State::Dragging && state != State::ReadyToThrow) return;
-
-    float force = throwImpulseBase + (a_heldDuration * throwStrengthMult);
-    if (force > throwImpulseMax) force = throwImpulseMax;
-
-    ReleaseNPC(true, force);
 }

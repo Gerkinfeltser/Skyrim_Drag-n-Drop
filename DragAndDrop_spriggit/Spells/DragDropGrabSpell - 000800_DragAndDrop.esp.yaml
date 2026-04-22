@@ -11,12 +11,11 @@ Description:
 Flags:
 - NoAbsorbOrReflect
 Type: LesserPower
-CastType: FireAndForget
+CastType: Concentration
 TargetType: TargetActor
 Effects:
 - BaseEffect: 000801:DragAndDrop.esp
-  Data:
-    Duration: 999999
+  Data: {}
   Conditions:
   - MutagenObjectType: ConditionFloat
     CompareOperator: GreaterThan
@@ -26,3 +25,5 @@ Effects:
       Reference: 000014:Skyrim.esm
       ActorValue: Stamina
     ComparisonValue: 2
+- BaseEffect: 000803:DragAndDrop.esp
+  Data: {}

@@ -4,14 +4,19 @@ Name:
   TargetLanguage: English
   Value: Drag NPC
 MenuDisplayObject: 1097CB:Skyrim.esm
+Keywords:
+- 07F404:Skyrim.esm
 Flags:
 - Hostile
 - Recover
+- NoDuration
+- NoMagnitude
+- NoArea
 - Painless
 Archetype:
   MutagenObjectType: MagicEffectArchetype
   Type: GrabActor
-CastType: FireAndForget
+CastType: Concentration
 DualCastScale: 1
 CastingSoundLevel: Silent
 Sounds: []
