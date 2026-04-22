@@ -1,6 +1,7 @@
 #pragma once
 
 #include <chrono>
+#include <vector>
 
 #include "RE/Skyrim.h"
 #include "SKSE/SKSE.h"
@@ -36,6 +37,7 @@ public:
 private:
     void DrainStamina(float a_dt);
     void ZeroGrabbedVelocity(RE::PlayerCharacter* a_player);
+    void ZeroSavedBodies();
     void ThrowGrabbedObject(float a_heldDuration);
     RE::hkVector4 GetImpulse(float a_force, float a_mass) const;
     float GetForce(float a_heldDuration) const;
@@ -48,6 +50,7 @@ private:
 
     bool rKeyHeld{ false };
     std::chrono::steady_clock::time_point rKeyTime;
+    std::vector<RE::hkpRigidBody*> savedBodies;
 
     bool enabled{ true };
     float staminaDrainRate{ 5.0f };
