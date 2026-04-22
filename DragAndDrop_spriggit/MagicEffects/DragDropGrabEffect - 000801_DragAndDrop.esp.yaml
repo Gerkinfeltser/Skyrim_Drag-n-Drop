@@ -31,9 +31,17 @@ Conditions:
     ActorValue: Stamina
   ComparisonValue: 2
 - MutagenObjectType: ConditionFloat
+  Flags:
+  - OR
   Data:
-    MutagenObjectType: GetDetectedConditionData
-    TargetNpc: 000014:Skyrim.esm
+    MutagenObjectType: GetDeadConditionData
+  ComparisonValue: 1
+- MutagenObjectType: ConditionFloat
+  Flags:
+  - OR
+  Data:
+    MutagenObjectType: GetDeadConditionData
+  ComparisonValue: 0
 - MutagenObjectType: ConditionFloat
   Data:
     MutagenObjectType: HasKeywordConditionData
