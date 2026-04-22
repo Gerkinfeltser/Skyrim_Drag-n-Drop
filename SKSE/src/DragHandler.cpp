@@ -175,43 +175,50 @@ void DragHandler::ThrowGrabbedObject(float a_heldDuration)
     auto bhkWorld = cell ? cell->GetbhkWorld() : nullptr;
     if (!bhkWorld) return;
 
-    RE::BSWriteLockGuard locker(bhkWorld->worldLock);
-
     float force = GetForce(a_heldDuration);
 
-    auto allBodies = CollectAllRigidBodies(grabbedActor);
-    for (auto* body : allBodies) {
-        if (body) {
-            body->motion.SetLinearVelocity(RE::hkVector4());
-            body->motion.SetAngularVelocity(RE::hkVector4());
-        }
-    }
+    RE::NiMatrix3 matrix = RE::PlayerCamera::GetSingleton()->cameraRoot->world.rotate;
+    float dirX = matrix.entry[0][1];
+    float dirY = matrix.entry[1][1];
+    float dirZ = matrix.entry[2][1];
 
-    auto& grabSpring = player->GetPlayerRuntimeData().grabSpring;
+    RE::hkVector4 throwDir(dirX, dirY, dirZ, 0);
+
+    auto allBodies = CollectAllRigidBodies(grabbedActor);
+
+    player->DestroyMouseSprings();
 
     SKSE::log::info("ThrowGrabbedObject: force={:.1f}, bodies={}", force, allBodies.size());
 
-    for (auto& springRef : grabSpring) {
-        if (!springRef) continue;
+    auto capturedBodies = allBodies;
+    auto capturedDir = throwDir;
+    float capturedForce = force;
 
-        auto bhkObj = reinterpret_cast<RE::bhkRefObject*>(springRef.get());
-        if (!bhkObj || !bhkObj->referencedObject) continue;
+    SKSE::GetTaskInterface()->AddTask([capturedBodies, capturedDir, capturedForce]() {
+        auto player = RE::PlayerCharacter::GetSingleton();
+        if (!player) return;
+        auto cell = player->GetParentCell();
+        auto bhkWorld = cell ? cell->GetbhkWorld() : nullptr;
+        if (!bhkWorld) return;
+        RE::BSWriteLockGuard locker(bhkWorld->worldLock);
 
-        auto actionBase = reinterpret_cast<std::uintptr_t>(bhkObj->referencedObject.get());
-        auto entityPtr = *reinterpret_cast<RE::hkpEntity**>(actionBase + 0x30);
-        if (!entityPtr) continue;
+        for (auto* body : capturedBodies) {
+            if (!body) continue;
+            body->motion.SetLinearVelocity(RE::hkVector4());
+            body->motion.SetAngularVelocity(RE::hkVector4());
+        }
 
-        auto hkpRigidBody = reinterpret_cast<RE::hkpRigidBody*>(entityPtr);
-        float mass = hkpRigidBody->motion.GetMass();
-        auto impulse = GetImpulse(force, mass);
-        hkpRigidBody->motion.ApplyLinearImpulse(impulse);
+        RE::hkVector4 impulse = capturedDir * capturedForce;
+        for (auto* body : capturedBodies) {
+            if (!body) continue;
+            float mass = body->motion.GetMass();
+            if (mass > 0.001f) {
+                body->motion.ApplyLinearImpulse(impulse * mass);
+            }
+        }
 
-        SKSE::log::info("Throw applied: force={:.1f}, mass={:.1f}, impulse=({:.1f},{:.1f},{:.1f})",
-            force, mass,
-            impulse.quad.m128_f32[0], impulse.quad.m128_f32[1], impulse.quad.m128_f32[2]);
-    }
-
-    player->DestroyMouseSprings();
+        SKSE::log::info("Throw: delayed zero + impulse on all {} bodies, force={:.1f}", capturedBodies.size(), capturedForce);
+    });
 }
 
 void DragHandler::ForceRagdoll(RE::Actor* a_actor)
