@@ -1,7 +1,9 @@
 #include "DragHandler.h"
 
+#include <cstdlib>
 #include <cstdio>
 #include <vector>
+#include <windows.h>
 
 #include "RE/B/BSVisit.h"
 #include "RE/B/bhkCollisionObject.h"
@@ -49,7 +51,45 @@ namespace
 
 bool DragHandler::LoadSettings()
 {
-    SKSE::log::info("Settings loaded (defaults)");
+    auto logDir = SKSE::log::log_directory();
+    std::filesystem::path iniPath;
+    if (logDir) {
+        iniPath = *logDir / ".." / "Plugins" / "DragAndDrop.ini";
+    } else {
+        iniPath = "DragAndDrop.ini";
+    }
+
+    std::string iniStr = iniPath.string();
+
+    auto getFloat = [&](const char* section, const char* key, float defaultVal) -> float {
+        char buf[64];
+        GetPrivateProfileStringA(section, key, "", buf, sizeof(buf), iniStr.c_str());
+        if (buf[0] == '\0') return defaultVal;
+        float val = static_cast<float>(std::atof(buf));
+        return (val != 0.0f || buf[0] == '0') ? val : defaultVal;
+    };
+
+    auto getBool = [&](const char* section, const char* key, bool defaultVal) -> bool {
+        char buf[16];
+        GetPrivateProfileStringA(section, key, "", buf, sizeof(buf), iniStr.c_str());
+        if (buf[0] == '\0') return defaultVal;
+        return _stricmp(buf, "true") == 0 || std::strcmp(buf, "1") == 0;
+    };
+
+    enabled = getBool("General", "bEnableMod", true);
+    grabRange = getFloat("General", "fGrabRange", 150.0f);
+    staminaDrainRate = getFloat("General", "fStaminaDrainRate", 5.0f);
+    grabFollowers = getBool("General", "bGrabFollowers", true);
+    grabChildren = getBool("General", "bGrabChildren", false);
+    grabAnyone = getBool("General", "bGrabAnyone", false);
+
+    throwImpulseMax = getFloat("Throw", "fThrowImpulseMax", 10.0f);
+    throwDropWindow = getFloat("Throw", "fThrowDropWindow", 0.5f);
+    throwTimeToMax = getFloat("Throw", "fThrowTimeToMax", 4.0f);
+
+    SKSE::log::info("Settings loaded: enabled={}, range={:.0f}, followers={}, children={}, anyone={}, maxImpulse={:.1f}, dropWindow={:.2f}s, timeToMax={:.1f}s",
+        enabled, grabRange, grabFollowers, grabChildren, grabAnyone, throwImpulseMax, throwDropWindow, throwTimeToMax);
+
     return true;
 }
 
@@ -68,11 +108,17 @@ bool DragHandler::IsValidTarget(RE::Actor* a_actor) const
 
     if (a_actor->IsGhost()) return false;
 
+    if (!grabChildren && a_actor->IsChild()) return false;
+
     bool isDead = a_actor->IsDead();
     bool isParalyzed = a_actor->AsActorValueOwner()->GetActorValue(RE::ActorValue::kParalysis) > 0.0f;
     bool isFollower = a_actor->IsPlayerTeammate();
 
-    return isDead || isParalyzed || isFollower;
+    if (isDead || isParalyzed) return true;
+    if (grabAnyone) return true;
+    if (grabFollowers && isFollower) return true;
+
+    return false;
 }
 
 RE::Actor* DragHandler::GetCrosshairActor() const
@@ -84,7 +130,7 @@ RE::Actor* DragHandler::GetCrosshairActor() const
     if (!processLists) return nullptr;
 
     RE::Actor* closest = nullptr;
-    float closestDist = 150.0f;
+    float closestDist = grabRange;
     auto playerPos = player->GetPosition();
 
     processLists->ForAllActors([&](RE::Actor& actor) {
@@ -117,9 +163,9 @@ void DragHandler::DrainStamina(float a_dt)
 
 float DragHandler::GetForce(float a_heldDuration) const
 {
-    float effective = a_heldDuration - 0.5f;
+    float effective = a_heldDuration - throwDropWindow;
     if (effective < 0.0f) effective = 0.0f;
-    float force = effective * throwStrengthMult;
+    float force = (effective / throwTimeToMax) * throwImpulseMax;
     if (force > throwImpulseMax) {
         force = throwImpulseMax;
     }
@@ -291,7 +337,7 @@ void DragHandler::UpdateGrabState()
     if (state == State::Dragging && rKeyHeld && !rNotified) {
         auto now = std::chrono::steady_clock::now();
         float elapsed = std::chrono::duration<float>(now - rKeyTime).count();
-        if (elapsed >= 0.5f) {
+        if (elapsed >= throwDropWindow) {
             rNotified = true;
             RE::DebugNotification("Ready to throw!");
         }
@@ -354,7 +400,7 @@ void DragHandler::OnKeyUp(uint32_t a_key)
         auto now = std::chrono::steady_clock::now();
         float heldDuration = std::chrono::duration<float>(now - rKeyTime).count();
 
-        if (heldDuration < 0.5f) {
+        if (heldDuration < throwDropWindow) {
             SKSE::log::info("R key tap -- treating as drop ({:.2f}s)", heldDuration);
 
             auto player = RE::PlayerCharacter::GetSingleton();

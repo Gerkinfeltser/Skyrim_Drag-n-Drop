@@ -52,8 +52,13 @@ private:
     std::chrono::steady_clock::time_point rKeyTime;
 
     bool enabled{ true };
+    float grabRange{ 150.0f };
     float staminaDrainRate{ 5.0f };
+    bool grabFollowers{ true };
+    bool grabChildren{ false };
+    bool grabAnyone{ false };
 
     float throwImpulseMax{ 10.0f };
-    float throwStrengthMult{ 2.5f };
+    float throwDropWindow{ 0.5f };
+    float throwTimeToMax{ 4.0f };
 };

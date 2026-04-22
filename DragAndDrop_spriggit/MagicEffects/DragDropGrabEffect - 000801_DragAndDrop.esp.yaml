@@ -31,48 +31,9 @@ Conditions:
     ActorValue: Stamina
   ComparisonValue: 2
 - MutagenObjectType: ConditionFloat
-  Flags:
-  - OR
-  Data:
-    MutagenObjectType: GetIsIDConditionData
-    Object: 000007:Skyrim.esm
-  ComparisonValue: 1
-- MutagenObjectType: ConditionFloat
-  Flags:
-  - OR
-  Data:
-    MutagenObjectType: GetActorValueConditionData
-    ActorValue: Paralysis
-  ComparisonValue: 1
-- MutagenObjectType: ConditionFloat
-  Flags:
-  - OR
-  Data:
-    MutagenObjectType: GetDeadConditionData
-  ComparisonValue: 1
-- MutagenObjectType: ConditionFloat
-  Flags:
-  - OR
-  Data:
-    MutagenObjectType: GetPlayerTeammateConditionData
-  ComparisonValue: 1
-- MutagenObjectType: ConditionFloat
-  Flags:
-  - OR
-  Data:
-    MutagenObjectType: IsChildConditionData
-  ComparisonValue: 1
-- MutagenObjectType: ConditionFloat
   Data:
     MutagenObjectType: GetDetectedConditionData
     TargetNpc: 000014:Skyrim.esm
-- MutagenObjectType: ConditionFloat
-  Flags:
-  - OR
-  Data:
-    MutagenObjectType: GetIsIDConditionData
-    Object: 000007:Skyrim.esm
-  ComparisonValue: 1
 - MutagenObjectType: ConditionFloat
   Data:
     MutagenObjectType: HasKeywordConditionData
