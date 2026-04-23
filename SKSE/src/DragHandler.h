@@ -49,6 +49,8 @@ private:
     static constexpr float BS_TO_HK_SCALE{ 0.0142875f };
     static constexpr float HK_TO_BS_SCALE{ 69.991251f };
 
+    void OnGrabActorEffectUpdate(RE::GrabActorEffect* a_effect, float a_delta);
+
     RE::Actor* grabbedActor{ nullptr };
     State state{ State::None };
 
@@ -76,4 +78,8 @@ private:
     RE::SpellItem* grabSpell{ nullptr };
     bool spellCastDetected{ false };
     std::chrono::steady_clock::time_point spellCastTime;
+
+    std::chrono::steady_clock::time_point grabStartTime;
+    bool debugGrabLogging{ false };
+    static constexpr float GRAB_DEBUG_DURATION{ 5.0f };
 };

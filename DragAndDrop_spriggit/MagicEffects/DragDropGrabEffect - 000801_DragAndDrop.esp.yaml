@@ -22,13 +22,11 @@ Description:
   Value: Grab an NPC to drag them.
 Conditions:
 - MutagenObjectType: ConditionFloat
-  CompareOperator: GreaterThan
+  Flags:
+  - OR
   Data:
-    MutagenObjectType: GetActorValueConditionData
-    RunOnType: Reference
-    Reference: 000014:Skyrim.esm
-    ActorValue: Stamina
-  ComparisonValue: 2
+    MutagenObjectType: GetDeadConditionData
 - MutagenObjectType: ConditionFloat
   Data:
-    MutagenObjectType: GetPairedAnimationConditionData
+    MutagenObjectType: GetDeadConditionData
+  ComparisonValue: 1

@@ -1,4 +1,5 @@
 #include "DragHandler.h"
+#include "Hooks.h"
 
 #include <cstdlib>
 #include <cstdio>
@@ -10,6 +11,99 @@
 #include "RE/B/bhkRigidBody.h"
 #include "RE/B/BShkbAnimationGraph.h"
 #include "RE/T/TESDataHandler.h"
+
+GrabActorUpdateFn g_originalGrabActorUpdate = nullptr;
+
+void GrabActorEffectUpdate_Hook(RE::GrabActorEffect* a_effect, float a_delta)
+{
+    static std::chrono::steady_clock::time_point lastLogTime;
+    static int updateCount = 0;
+
+    if (g_originalGrabActorUpdate) {
+        g_originalGrabActorUpdate(a_effect, a_delta);
+    }
+
+    auto now = std::chrono::steady_clock::now();
+
+    if (!a_effect) return;
+
+    auto player = RE::PlayerCharacter::GetSingleton();
+    if (!player || !player->IsGrabbing()) return;
+
+    auto grabbedRef = player->GetGrabbedRef();
+    if (!grabbedRef) return;
+
+    auto grabbedActor = grabbedRef->As<RE::Actor>();
+    if (!grabbedActor) return;
+
+    auto playerEffectList = player->AsMagicTarget()->GetActiveEffectList();
+    bool isOnPlayer = false;
+    if (playerEffectList) {
+        for (auto it = playerEffectList->begin(); it != playerEffectList->end(); ++it) {
+            if (*it == a_effect) {
+                isOnPlayer = true;
+                break;
+            }
+        }
+    }
+
+    auto npcEffectList = grabbedActor->AsMagicTarget()->GetActiveEffectList();
+    bool isOnNPC = false;
+    if (npcEffectList) {
+        for (auto it = npcEffectList->begin(); it != npcEffectList->end(); ++it) {
+            if (*it == a_effect) {
+                isOnNPC = true;
+                break;
+            }
+        }
+    }
+
+    auto& grabSpring = player->GetPlayerRuntimeData().grabSpring;
+    for (auto& springRef : grabSpring) {
+        if (!springRef) continue;
+        auto bhkObj = reinterpret_cast<RE::bhkRefObject*>(springRef.get());
+        if (!bhkObj || !bhkObj->referencedObject) continue;
+        auto actionBase = reinterpret_cast<std::uintptr_t>(bhkObj->referencedObject.get());
+
+        auto* mousePos = reinterpret_cast<RE::hkVector4*>(actionBase + 0x50);
+        float x = mousePos->quad.m128_f32[0];
+        float y = mousePos->quad.m128_f32[1];
+        float z = mousePos->quad.m128_f32[2];
+        auto* springForce = reinterpret_cast<float*>(actionBase + 0x48);
+
+        bool wasNearZero = (std::abs(x) < 5.0f && std::abs(y) < 5.0f && std::abs(z) < 5.0f);
+
+        if (updateCount % 60 == 0) {
+            SKSE::log::info("HOOK_UPDATE[{}]: effect={:p} grabbed={} isOnPlayer={} isOnNPC={} mousePos=({:.1f},{:.1f},{:.1f}) force={:.4f}",
+                updateCount, (void*)a_effect, a_effect->grabbed, isOnPlayer, isOnNPC, x, y, z, *springForce);
+        }
+
+        if (wasNearZero) {
+            auto playerPos = player->GetPosition();
+            float yaw = player->data.angle.z;
+            float fwdX = std::sin(yaw);
+            float fwdY = -std::cos(yaw);
+
+            float targetX = (playerPos.x + fwdX * 150.0f) * 0.0142875f;
+            float targetY = (playerPos.y + fwdY * 150.0f) * 0.0142875f;
+            float targetZ = (playerPos.z + 50.0f) * 0.0142875f;
+
+            mousePos->quad.m128_f32[0] = targetX;
+            mousePos->quad.m128_f32[1] = targetY;
+            mousePos->quad.m128_f32[2] = targetZ;
+            *springForce = 0.1556f;
+
+            auto elapsed = std::chrono::duration<float>(now - lastLogTime).count();
+            if (elapsed > 0.5f) {
+                SKSE::log::info("HOOK_FIX: mousePos was ({:.1f},{:.1f},{:.1f}) -> ({:.1f},{:.1f},{:.1f}), force={:.4f}",
+                    x, y, z, targetX, targetY, targetZ, *springForce);
+                lastLogTime = now;
+            }
+        }
+    }
+
+    updateCount++;
+}
 
 namespace
 {
@@ -357,10 +451,168 @@ void DragHandler::UpdateGrabState()
             grabbedActor = grabbedRef->As<RE::Actor>();
         if (grabbedActor) {
             state = State::Dragging;
+            grabStartTime = std::chrono::steady_clock::now();
+            debugGrabLogging = true;
             std::string name = grabbedActor->GetDisplayFullName();
-            SKSE::log::info("Grabbed: {} ({:08X})", name, grabbedActor->GetFormID());
+            SKSE::log::info("GRAB_DEBUG: Grabbed: {} ({:08X})", name, grabbedActor->GetFormID());
+
             ApplySpeedBoost(player);
+
+            auto& grabSpring = player->GetPlayerRuntimeData().grabSpring;
+            for (auto& springRef : grabSpring) {
+                if (!springRef) continue;
+                auto bhkObj = reinterpret_cast<RE::bhkRefObject*>(springRef.get());
+                if (!bhkObj || !bhkObj->referencedObject) continue;
+                auto actionBase = reinterpret_cast<std::uintptr_t>(bhkObj->referencedObject.get());
+
+                auto* springForce = reinterpret_cast<float*>(actionBase + 0x48);
+                auto* damping = reinterpret_cast<float*>(actionBase + 0x60);
+                auto* elasticity = reinterpret_cast<float*>(actionBase + 0x64);
+                auto* maxForce = reinterpret_cast<float*>(actionBase + 0x68);
+                auto* strength = reinterpret_cast<float*>(actionBase + 0x4C);
+
+                SKSE::log::info("GRAB_DEBUG: Spring params BEFORE: force={:.4f} damping={:.4f} elasticity={:.4f} maxForce={:.1f} strength={:.4f}",
+                    *springForce, *damping, *elasticity, *maxForce, *strength);
+
+                *damping = 1.5f;
+                *elasticity = 0.05f;
+                *maxForce = 500.0f;
+
+                SKSE::log::info("GRAB_DEBUG: Spring params AFTER: damping={:.4f} elasticity={:.4f} maxForce={:.1f}",
+                    *damping, *elasticity, *maxForce);
+            }
+
+            auto playerEffectList = player->AsMagicTarget()->GetActiveEffectList();
+            if (playerEffectList) {
+                SKSE::log::info("GRAB_DEBUG: Scanning player's active effects...");
+                int count = 0;
+                for (auto it = playerEffectList->begin(); it != playerEffectList->end(); ++it) {
+                    auto* effect = *it;
+                    if (!effect) continue;
+                    count++;
+                    auto baseObj = effect->GetBaseObject();
+                    if (baseObj) {
+                        SKSE::log::info("GRAB_DEBUG: Player effect[{}]: archetype={}, formID={:08X}", 
+                            count - 1, (int)baseObj->data.archetype, baseObj->formID);
+                    }
+                }
+                SKSE::log::info("GRAB_DEBUG: Total player active effects: {}", count);
+            }
+
+            if (grabbedActor) {
+                auto npcEffectList = grabbedActor->AsMagicTarget()->GetActiveEffectList();
+                if (npcEffectList) {
+                    SKSE::log::info("GRAB_DEBUG: Scanning NPC's active effects...");
+                    int count = 0;
+                    for (auto it = npcEffectList->begin(); it != npcEffectList->end(); ++it) {
+                        auto* effect = *it;
+                        if (!effect) continue;
+                        count++;
+                        auto baseObj = effect->GetBaseObject();
+                        if (baseObj && baseObj->data.archetype == RE::EffectArchetype::kGrabActor) {
+                            auto vtablePtr = *reinterpret_cast<std::uintptr_t*>(effect);
+                            auto updateFn = *reinterpret_cast<std::uintptr_t*>(vtablePtr + 0x28);
+                            SKSE::log::info("GRAB_DEBUG: Found GrabActorEffect on NPC {:p}, vtable={:p}, Update fn={:p}", 
+                                (void*)effect, (void*)vtablePtr, (void*)updateFn);
+                            if (updateFn) {
+                                SKSE::log::info("GRAB_DEBUG: Update function at {:p} - ready for hooking!", (void*)updateFn);
+                            }
+                        }
+                    }
+                    SKSE::log::info("GRAB_DEBUG: Total NPC active effects: {}", count);
+                }
+            }
+
+            auto cell = player->GetParentCell();
+            auto bhkWorld = cell ? cell->GetbhkWorld() : nullptr;
+            if (bhkWorld) {
+                RE::BSWriteLockGuard locker(bhkWorld->worldLock);
+                auto allBodies = CollectAllRigidBodies(grabbedActor);
+                for (auto* body : allBodies) {
+                    body->motion.SetLinearVelocity(RE::hkVector4());
+                    body->motion.SetAngularVelocity(RE::hkVector4());
+                }
+                SKSE::log::info("GRAB_DEBUG: Zeroed velocities on {} rigid bodies at grab start", allBodies.size());
+            }
         }
+        }
+    }
+
+    if (debugGrabLogging && state == State::Dragging) {
+        auto now = std::chrono::steady_clock::now();
+        float grabElapsed = std::chrono::duration<float>(now - grabStartTime).count();
+        if (grabElapsed < GRAB_DEBUG_DURATION) {
+            auto npcPos = grabbedActor ? grabbedActor->GetPosition() : RE::NiPoint3(0, 0, 0);
+            SKSE::log::info("GRAB_DEBUG: t={:.4f}s npcPos=({:.1f},{:.1f},{:.1f}) playerPos=({:.1f},{:.1f},{:.1f})",
+                grabElapsed, npcPos.x, npcPos.y, npcPos.z,
+                player->GetPosition().x, player->GetPosition().y, player->GetPosition().z);
+
+            auto& grabSpring = player->GetPlayerRuntimeData().grabSpring;
+            for (std::size_t i = 0; i < grabSpring.size(); ++i) {
+                auto& springRef = grabSpring[i];
+                if (!springRef) continue;
+                auto bhkObj = reinterpret_cast<RE::bhkRefObject*>(springRef.get());
+                if (!bhkObj || !bhkObj->referencedObject) continue;
+                auto actionBase = reinterpret_cast<std::uintptr_t>(bhkObj->referencedObject.get());
+
+                SKSE::log::info("GRAB_DEBUG:   spring[{}] exists, actionBase={:p}", i, (void*)actionBase);
+            }
+
+            auto cell = player->GetParentCell();
+            auto bhkWorld = cell ? cell->GetbhkWorld() : nullptr;
+            if (bhkWorld) {
+                RE::BSWriteLockGuard hkLock(bhkWorld->worldLock);
+                for (std::size_t i = 0; i < grabSpring.size(); ++i) {
+                    auto& springRef = grabSpring[i];
+                    if (!springRef) continue;
+                    auto bhkObj = reinterpret_cast<RE::bhkRefObject*>(springRef.get());
+                    if (!bhkObj || !bhkObj->referencedObject) continue;
+                    auto actionBase = reinterpret_cast<std::uintptr_t>(bhkObj->referencedObject.get());
+
+                    auto entityPtr = *reinterpret_cast<RE::hkpEntity**>(actionBase + 0x30);
+                    float force = *reinterpret_cast<float*>(actionBase + 0x48);
+                    float strength = *reinterpret_cast<float*>(actionBase + 0x4C);
+                    auto mousePos = *reinterpret_cast<RE::hkVector4*>(actionBase + 0x50);
+                    float damping = *reinterpret_cast<float*>(actionBase + 0x60);
+                    float elasticity = *reinterpret_cast<float*>(actionBase + 0x64);
+                    float maxForce = *reinterpret_cast<float*>(actionBase + 0x68);
+
+                    SKSE::log::info("GRAB_DEBUG:   spring[{}] entity={:p} force={:.4f} strength={:.4f} damping={:.4f} elasticity={:.4f} maxForce={:.1f}",
+                        i, (void*)entityPtr, force, strength, damping, elasticity, maxForce);
+                    SKSE::log::info("GRAB_DEBUG:   spring[{}] mousePosHK=({:.1f},{:.1f},{:.1f}) mousePosBS=({:.1f},{:.1f},{:.1f})",
+                        i,
+                        mousePos.quad.m128_f32[0], mousePos.quad.m128_f32[1], mousePos.quad.m128_f32[2],
+                        mousePos.quad.m128_f32[0] * HK_TO_BS_SCALE,
+                        mousePos.quad.m128_f32[1] * HK_TO_BS_SCALE,
+                        mousePos.quad.m128_f32[2] * HK_TO_BS_SCALE);
+
+                    if (entityPtr) {
+                        auto hkpBody = reinterpret_cast<RE::hkpRigidBody*>(entityPtr);
+                        auto& linVel = hkpBody->motion.linearVelocity;
+                        float mass = hkpBody->motion.GetMass();
+                        SKSE::log::info("GRAB_DEBUG:   spring[{}] rigidBody velHK=({:.2f},{:.2f},{:.2f}) mass={:.2f}",
+                            i, linVel.quad.m128_f32[0], linVel.quad.m128_f32[1], linVel.quad.m128_f32[2], mass);
+                    }
+                }
+
+                if (grabbedActor) {
+                    auto bodies = CollectAllRigidBodies(grabbedActor);
+                    float totalVelMag = 0.0f;
+                    for (auto* body : bodies) {
+                        auto& vel = body->motion.linearVelocity;
+                        float mag = std::sqrt(vel.quad.m128_f32[0]*vel.quad.m128_f32[0] +
+                                               vel.quad.m128_f32[1]*vel.quad.m128_f32[1] +
+                                               vel.quad.m128_f32[2]*vel.quad.m128_f32[2]);
+                        totalVelMag += mag;
+                    }
+                    SKSE::log::info("GRAB_DEBUG: t={:.4f}s bodies={} totalVelocityMag={:.2f} avgPerBody={:.2f}",
+                        grabElapsed, bodies.size(), totalVelMag,
+                        bodies.empty() ? 0.0f : totalVelMag / bodies.size());
+                }
+            }
+        } else {
+            debugGrabLogging = false;
+            SKSE::log::info("GRAB_DEBUG: Debug logging ended after {:.3f}s", grabElapsed);
         }
     }
 
@@ -377,15 +629,33 @@ void DragHandler::UpdateGrabState()
             float fwdX = std::sin(yaw);
             float fwdY = -std::cos(yaw);
 
+            float targetX = (playerPos.x + fwdX * grabHoldDist) * BS_TO_HK_SCALE;
+            float targetY = (playerPos.y + fwdY * grabHoldDist) * BS_TO_HK_SCALE;
+            float targetZ = (playerPos.z + 50.0f) * BS_TO_HK_SCALE;
+
             auto* mousePos = reinterpret_cast<RE::hkVector4*>(actionBase + 0x50);
-            mousePos->quad.m128_f32[0] = (playerPos.x + fwdX * grabHoldDist) * BS_TO_HK_SCALE;
-            mousePos->quad.m128_f32[1] = (playerPos.y + fwdY * grabHoldDist) * BS_TO_HK_SCALE;
-            mousePos->quad.m128_f32[2] = (playerPos.z + 50.0f) * BS_TO_HK_SCALE;
+
+            mousePos->quad.m128_f32[0] = targetX;
+            mousePos->quad.m128_f32[1] = targetY;
+            mousePos->quad.m128_f32[2] = targetZ;
+
+            float currentX = mousePos->quad.m128_f32[0];
+            float currentY = mousePos->quad.m128_f32[1];
+            float currentZ = mousePos->quad.m128_f32[2];
+
+            bool wasNearZero = (std::abs(currentX) < 5.0f && std::abs(currentY) < 5.0f && std::abs(currentZ) < 5.0f);
+            auto* springForce = reinterpret_cast<float*>(actionBase + 0x48);
+            if (wasNearZero) {
+                *springForce = 0.0f;
+            } else if (*springForce < 0.01f) {
+                *springForce = 0.1556f;
+            }
         }
     }
 
     if (state == State::Dragging && !player->IsGrabbing()) {
         SKSE::log::info("Grab lost (engine released)");
+        debugGrabLogging = false;
         RestoreSpeed(player);
         grabbedActor = nullptr;
         state = State::None;
@@ -551,14 +821,29 @@ void DragHandler::TryGrabWithSpell()
     auto target = GetCrosshairActor();
     if (!target || !IsValidTarget(target)) return;
 
-    SKSE::log::info("TryGrabWithSpell: casting grab spell on {:08X}", target->GetFormID());
-    auto caster = player->GetMagicCaster(RE::MagicSystem::CastingSource::kInstant);
-    if (!caster) {
-        caster = player->GetMagicCaster(RE::MagicSystem::CastingSource::kRightHand);
-    }
-    if (!caster) return;
+    RE::FormID targetFormID = target->GetFormID();
+    float holdDist = grabHoldDist;
 
-caster->CastSpellImmediate(grabSpell, false, target, 1.0f, false, 0.0f, player);
+    SKSE::GetTaskInterface()->AddTask([targetFormID, holdDist]() {
+        auto player = RE::PlayerCharacter::GetSingleton();
+        if (!player) return;
+
+        auto target = RE::TESForm::LookupByID(targetFormID)->As<RE::Actor>();
+        if (!target) return;
+
+        player->GetPlayerRuntimeData().grabObjectWeight = 0.0f;
+        player->GetPlayerRuntimeData().grabDistance = holdDist;
+        player->GetPlayerRuntimeData().grabbedObject = target->CreateRefHandle();
+
+        auto spell = RE::TESDataHandler::GetSingleton()->LookupForm<RE::SpellItem>(0x800, "DragAndDrop.esp");
+        if (!spell) return;
+
+        auto caster = player->GetMagicCaster(RE::MagicSystem::CastingSource::kRightHand);
+        if (!caster) return;
+
+        caster->CastSpellImmediate(spell, false, target, 1.0f, false, 0.0f, player);
+        SKSE::log::info("TryGrabWithSpell: AddTask kRightHand cast on {:08X}", targetFormID);
+    });
 }
 
 void DragHandler::DebugLogSpringState(RE::Actor* a_actor)

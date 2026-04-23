@@ -110,6 +110,7 @@ C:\Users\vector\Documents\My Games\Skyrim.INI\SKSE\DragAndDrop.log
 
 ## Not Yet Implemented
 
+- **G-key grab jitter — VMT hook tried (attempt #14, FAILED).** Hook fires and fixes near-zero mousePos, but Havok reads the bad value before fix applies. Effect's alternating write is internal — same effect instance alternates correct/near-zero every Update call. **Option B (manual spring creation) is the recommended path forward.**
 - Stamina drain while dragging (stub exists, not wired to frame tick)
 - Force ragdoll on stiff/standing dead NPCs (ForceRagdoll exists but causes issues when called at grab time)
 - Throw damage/stagger to other NPCs on hit
