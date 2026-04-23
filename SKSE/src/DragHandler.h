@@ -22,8 +22,8 @@ public:
     RE::Actor* GetGrabbedActor() const { return grabbedActor; }
     bool IsDragging() const { return state != State::None; }
 
-    void OnKeyDown(uint32_t a_key);
-    void OnKeyUp(uint32_t a_key);
+    void OnKeyDown(uint32_t a_key, const char* a_userEvent = "");
+    void OnKeyUp(uint32_t a_key, const char* a_userEvent = "");
     bool IsValidTarget(RE::Actor* a_actor) const;
     RE::Actor* GetCrosshairActor() const;
 
@@ -42,6 +42,7 @@ private:
     float GetForce(float a_heldDuration) const;
     void ApplySpeedBoost(RE::PlayerCharacter* a_player);
     void RestoreSpeed(RE::PlayerCharacter* a_player);
+    void DoRelease(float a_heldDuration);
 
     static constexpr float BS_TO_HK_SCALE{ 0.0142875f };
     static constexpr float HK_TO_BS_SCALE{ 69.991251f };
@@ -67,4 +68,8 @@ private:
     float throwImpulseMax{ 10.0f };
     float throwDropWindow{ 0.5f };
     float throwTimeToMax{ 4.0f };
+
+    RE::SpellItem* grabSpell{ nullptr };
+    bool spellCastDetected{ false };
+    std::chrono::steady_clock::time_point spellCastTime;
 };

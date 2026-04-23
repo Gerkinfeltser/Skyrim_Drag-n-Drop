@@ -9,6 +9,7 @@
 #include "RE/B/bhkCollisionObject.h"
 #include "RE/B/bhkRigidBody.h"
 #include "RE/B/BShkbAnimationGraph.h"
+#include "RE/T/TESDataHandler.h"
 
 namespace
 {
@@ -102,7 +103,13 @@ bool DragHandler::LoadSettings()
 
 void DragHandler::OnDataLoad()
 {
-    SKSE::log::info("Data loaded (GMST tuning skipped — using engine defaults)");
+    auto* dataHandler = RE::TESDataHandler::GetSingleton();
+    if (dataHandler) {
+        grabSpell = dataHandler->LookupForm<RE::SpellItem>(0x800, "DragAndDrop.esp");
+        SKSE::log::info("Data loaded, grab spell: {:p}", (void*)grabSpell);
+    } else {
+        SKSE::log::warn("Data loaded, TESDataHandler not available");
+    }
 }
 
 bool DragHandler::IsValidTarget(RE::Actor* a_actor) const
@@ -346,21 +353,6 @@ void DragHandler::UpdateGrabState()
                 std::string name = grabbedActor->GetDisplayFullName();
                 SKSE::log::info("Grabbed: {} ({:08X})", name, grabbedActor->GetFormID());
                 ApplySpeedBoost(player);
-
-                auto& grabSpring = player->GetPlayerRuntimeData().grabSpring;
-                for (auto& springRef : grabSpring) {
-                    if (!springRef) continue;
-                    auto bhkObj = reinterpret_cast<RE::bhkRefObject*>(springRef.get());
-                    if (!bhkObj || !bhkObj->referencedObject) continue;
-                    auto actionBase = reinterpret_cast<std::uintptr_t>(bhkObj->referencedObject.get());
-                    auto* base = reinterpret_cast<uint8_t*>(actionBase);
-                    SKSE::log::info("=== MOUSE SPRING DUMP (base={:p}) ===", (void*)actionBase);
-                    for (int i = 0; i < 0x80; i += 4) {
-                        float f = *reinterpret_cast<float*>(base + i);
-                        void* p = *reinterpret_cast<void**>(base + i);
-                        SKSE::log::info("  +0x{:02X}: float={:.6f}  ptr={:p}", i, f, p);
-                    }
-                }
             }
         }
     }
@@ -372,11 +364,13 @@ void DragHandler::UpdateGrabState()
         state = State::None;
         actionKeyHeld = false;
         actionNotified = false;
+        spellCastDetected = false;
     }
 
-    if (state == State::Dragging && actionKeyHeld && !actionNotified) {
+    if (state == State::Dragging && (actionKeyHeld || spellCastDetected) && !actionNotified) {
         auto now = std::chrono::steady_clock::now();
-        float elapsed = std::chrono::duration<float>(now - actionKeyTime).count();
+        auto startTime = actionKeyHeld ? actionKeyTime : spellCastTime;
+        float elapsed = std::chrono::duration<float>(now - startTime).count();
         if (elapsed >= throwDropWindow) {
             actionNotified = true;
             RE::DebugNotification("Ready to throw!");
@@ -384,27 +378,51 @@ void DragHandler::UpdateGrabState()
     }
 }
 
-void DragHandler::OnKeyDown(uint32_t a_key)
+void DragHandler::OnKeyDown(uint32_t a_key, const char* a_userEvent)
 {
-    if (a_key == actionKey && state == State::Dragging) {
+    if (state == State::Dragging && strcmp(a_userEvent, "Shout") == 0 && !spellCastDetected) {
+        spellCastDetected = true;
+        spellCastTime = std::chrono::steady_clock::now();
+        SKSE::log::info("Power/Shout key down while dragging, charging throw");
+        return;
+    }
+
+    if (a_key == actionKey && state == State::Dragging && !actionKeyHeld) {
         actionKeyHeld = true;
         actionKeyTime = std::chrono::steady_clock::now();
         SKSE::log::info("Action key down (0x{:02X}), charging throw", actionKey);
     }
 }
 
-void DragHandler::OnKeyUp(uint32_t a_key)
+void DragHandler::OnKeyUp(uint32_t a_key, const char* a_userEvent)
 {
-    if (a_key != actionKey || state != State::Dragging || !actionKeyHeld) return;
+    bool isShoutUp = (strcmp(a_userEvent, "Shout") == 0) && spellCastDetected;
+    bool isActionUp = (a_key == actionKey) && actionKeyHeld;
+
+    if (!isShoutUp && !isActionUp) return;
+    if (state != State::Dragging) return;
 
     auto now = std::chrono::steady_clock::now();
-    float heldDuration = std::chrono::duration<float>(now - actionKeyTime).count();
+    float heldDuration = 0.0f;
 
+    if (isShoutUp) {
+        heldDuration = std::chrono::duration<float>(now - spellCastTime).count();
+        spellCastDetected = false;
+    } else {
+        heldDuration = std::chrono::duration<float>(now - actionKeyTime).count();
+        actionKeyHeld = false;
+    }
+
+    DoRelease(heldDuration);
+}
+
+void DragHandler::DoRelease(float a_heldDuration)
+{
     auto player = RE::PlayerCharacter::GetSingleton();
     std::vector<RE::hkpRigidBody*> bodiesToZero = CollectAllRigidBodies(grabbedActor);
 
-    if (heldDuration < throwDropWindow) {
-        SKSE::log::info("Action key tap -- dropping ({:.2f}s)", heldDuration);
+    if (a_heldDuration < throwDropWindow) {
+        SKSE::log::info("Dropping ({:.2f}s)", a_heldDuration);
 
         if (player) {
             player->DestroyMouseSprings();
@@ -417,9 +435,9 @@ void DragHandler::OnKeyUp(uint32_t a_key)
 
         if (!bodiesToZero.empty()) {
             SKSE::GetTaskInterface()->AddTask([bodiesToZero]() {
-                auto player = RE::PlayerCharacter::GetSingleton();
-                if (!player) return;
-                auto cell = player->GetParentCell();
+                auto p = RE::PlayerCharacter::GetSingleton();
+                if (!p) return;
+                auto cell = p->GetParentCell();
                 auto bhkWorld = cell ? cell->GetbhkWorld() : nullptr;
                 if (!bhkWorld) return;
                 RE::BSWriteLockGuard locker(bhkWorld->worldLock);
@@ -437,14 +455,15 @@ void DragHandler::OnKeyUp(uint32_t a_key)
         state = State::None;
         actionKeyHeld = false;
         actionNotified = false;
+        spellCastDetected = false;
         RestoreSpeed(player);
         RE::DebugNotification("Dropped");
         return;
     }
 
-    float force = GetForce(heldDuration);
-    SKSE::log::info("Action key up -- throwing (held {:.2f}s, force={:.0f})", heldDuration, force);
-    ThrowGrabbedObject(heldDuration);
+    float force = GetForce(a_heldDuration);
+    SKSE::log::info("Throwing (held {:.2f}s, force={:.0f})", a_heldDuration, force);
+    ThrowGrabbedObject(a_heldDuration);
 
     char buf[64];
     std::snprintf(buf, sizeof(buf), "Threw! (%.0f force)", force);
@@ -461,6 +480,7 @@ void DragHandler::OnKeyUp(uint32_t a_key)
     state = State::None;
     actionKeyHeld = false;
     actionNotified = false;
+    spellCastDetected = false;
     RestoreSpeed(player);
 }
 

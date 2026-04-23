@@ -16,9 +16,9 @@ namespace Hooks
 
                 auto btn = static_cast<RE::ButtonEvent*>(ev);
                 if (btn->IsDown()) {
-                    handler->OnKeyDown(btn->idCode);
+                    handler->OnKeyDown(btn->idCode, btn->userEvent.c_str());
                 } else if (btn->IsUp()) {
-                    handler->OnKeyUp(btn->idCode);
+                    handler->OnKeyUp(btn->idCode, btn->userEvent.c_str());
                 }
             }
 
