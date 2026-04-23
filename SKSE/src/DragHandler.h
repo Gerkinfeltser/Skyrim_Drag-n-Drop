@@ -27,6 +27,7 @@ public:
     bool IsValidTarget(RE::Actor* a_actor) const;
     RE::Actor* GetCrosshairActor() const;
     void TryGrabWithSpell();
+    void DebugLogSpringState(RE::Actor* a_actor);
 
     enum class State
     {

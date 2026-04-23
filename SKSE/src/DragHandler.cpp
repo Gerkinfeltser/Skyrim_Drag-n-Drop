@@ -129,15 +129,14 @@ bool DragHandler::IsValidTarget(RE::Actor* a_actor) const
     if ((ghostKw && a_actor->HasKeyword(ghostKw)) || (paraKw && a_actor->HasKeyword(paraKw))) return false;
 
     if (a_actor->IsGhost()) return false;
-
     if (!grabChildren && a_actor->IsChild()) return false;
 
     bool isDead = a_actor->IsDead();
     bool isParalyzed = a_actor->AsActorValueOwner()->GetActorValue(RE::ActorValue::kParalysis) > 0.0f;
     bool isFollower = a_actor->IsPlayerTeammate();
 
-    if (isDead || isParalyzed) return true;
     if (grabAnyone) return true;
+    if (isDead || isParalyzed) return true;
     if (grabFollowers && isFollower) return true;
 
     return false;
@@ -356,12 +355,12 @@ void DragHandler::UpdateGrabState()
         auto grabbedRef = player->GetGrabbedRef();
         if (grabbedRef) {
             grabbedActor = grabbedRef->As<RE::Actor>();
-            if (grabbedActor) {
-                state = State::Dragging;
-                std::string name = grabbedActor->GetDisplayFullName();
-                SKSE::log::info("Grabbed: {} ({:08X})", name, grabbedActor->GetFormID());
-                ApplySpeedBoost(player);
-            }
+        if (grabbedActor) {
+            state = State::Dragging;
+            std::string name = grabbedActor->GetDisplayFullName();
+            SKSE::log::info("Grabbed: {} ({:08X})", name, grabbedActor->GetFormID());
+            ApplySpeedBoost(player);
+        }
         }
     }
 
@@ -552,9 +551,39 @@ void DragHandler::TryGrabWithSpell()
     auto target = GetCrosshairActor();
     if (!target || !IsValidTarget(target)) return;
 
-    auto caster = player->GetMagicCaster(RE::MagicSystem::CastingSource::kRightHand);
+    SKSE::log::info("TryGrabWithSpell: casting grab spell on {:08X}", target->GetFormID());
+    auto caster = player->GetMagicCaster(RE::MagicSystem::CastingSource::kInstant);
+    if (!caster) {
+        caster = player->GetMagicCaster(RE::MagicSystem::CastingSource::kRightHand);
+    }
     if (!caster) return;
 
-    SKSE::log::info("TryGrabWithSpell: casting grab spell on {:08X}", target->GetFormID());
-    caster->CastSpellImmediate(grabSpell, true, target, 1.0f, false, 0.0f, player);
+caster->CastSpellImmediate(grabSpell, false, target, 1.0f, false, 0.0f, player);
+}
+
+void DragHandler::DebugLogSpringState(RE::Actor* a_actor)
+{
+    if (!a_actor) return;
+    auto player = RE::PlayerCharacter::GetSingleton();
+    if (!player) return;
+
+    auto& grabSpring = player->GetPlayerRuntimeData().grabSpring;
+    SKSE::log::info("Spring count: {}", grabSpring.size());
+    for (auto& springRef : grabSpring) {
+        if (!springRef) continue;
+        auto bhkObj = reinterpret_cast<RE::bhkRefObject*>(springRef.get());
+        if (!bhkObj || !bhkObj->referencedObject) continue;
+        auto actionBase = reinterpret_cast<std::uintptr_t>(bhkObj->referencedObject.get());
+        auto entityPtr = *reinterpret_cast<RE::hkpEntity**>(actionBase + 0x30);
+        float force = *reinterpret_cast<float*>(actionBase + 0x48);
+        float strength = *reinterpret_cast<float*>(actionBase + 0x4C);
+        float damping = *reinterpret_cast<float*>(actionBase + 0x60);
+        float elasticity = *reinterpret_cast<float*>(actionBase + 0x64);
+        float maxForce = *reinterpret_cast<float*>(actionBase + 0x68);
+        auto mousePos = *reinterpret_cast<RE::hkVector4*>(actionBase + 0x50);
+        SKSE::log::info("  entity={:p} force={:.3f} strength={:.3f} damping={:.3f} elasticity={:.3f} maxForce={:.1f}",
+            (void*)entityPtr, force, strength, damping, elasticity, maxForce);
+        SKSE::log::info("  mousePos: {:.1f}, {:.1f}, {:.1f}",
+            mousePos.quad.m128_f32[0], mousePos.quad.m128_f32[1], mousePos.quad.m128_f32[2]);
+    }
 }
