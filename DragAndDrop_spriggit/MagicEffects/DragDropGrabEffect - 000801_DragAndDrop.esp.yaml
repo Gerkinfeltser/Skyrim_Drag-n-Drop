@@ -30,32 +30,5 @@ Conditions:
     ActorValue: Stamina
   ComparisonValue: 2
 - MutagenObjectType: ConditionFloat
-  Flags:
-  - OR
-  Data:
-    MutagenObjectType: GetDeadConditionData
-  ComparisonValue: 1
-- MutagenObjectType: ConditionFloat
-  CompareOperator: GreaterThan
-  Flags:
-  - OR
-  Data:
-    MutagenObjectType: GetActorValueConditionData
-    ActorValue: Paralysis
-- MutagenObjectType: ConditionFloat
-  Data:
-    MutagenObjectType: HasKeywordConditionData
-    Keyword: 0D205E:Skyrim.esm
-- MutagenObjectType: ConditionFloat
-  Data:
-    MutagenObjectType: HasKeywordConditionData
-    Keyword: 0F23C5:Skyrim.esm
-- MutagenObjectType: ConditionFloat
   Data:
     MutagenObjectType: GetPairedAnimationConditionData
-- MutagenObjectType: ConditionFloat
-  CompareOperator: LessThanOrEqualTo
-  Data:
-    MutagenObjectType: GetDistanceConditionData
-    Target: 000014:Skyrim.esm
-  ComparisonValue: 80
