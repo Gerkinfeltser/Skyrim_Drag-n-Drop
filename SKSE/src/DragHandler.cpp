@@ -418,7 +418,9 @@ void DragHandler::OnKeyDown(uint32_t a_key, const char* a_userEvent)
     if (a_key == actionKey && state == State::Dragging && !actionKeyHeld) {
         actionKeyHeld = true;
         actionKeyTime = std::chrono::steady_clock::now();
-        SKSE::log::info("Action key down (0x{:02X}), charging throw", actionKey);
+        SKSE::log::info("Action key down (0x{:02X}), charging throw", a_key);
+    } else if (a_key == actionKey && state == State::None) {
+        TryGrabWithSpell();
     }
 }
 
@@ -538,4 +540,21 @@ bool DragHandler::ReleaseNPC(bool a_throw, float a_force)
     actionKeyHeld = false;
 
     return true;
+}
+
+void DragHandler::TryGrabWithSpell()
+{
+    if (state != State::None) return;
+
+    auto player = RE::PlayerCharacter::GetSingleton();
+    if (!player || !grabSpell) return;
+
+    auto target = GetCrosshairActor();
+    if (!target || !IsValidTarget(target)) return;
+
+    auto caster = player->GetMagicCaster(RE::MagicSystem::CastingSource::kRightHand);
+    if (!caster) return;
+
+    SKSE::log::info("TryGrabWithSpell: casting grab spell on {:08X}", target->GetFormID());
+    caster->CastSpellImmediate(grabSpell, true, target, 1.0f, false, 0.0f, player);
 }

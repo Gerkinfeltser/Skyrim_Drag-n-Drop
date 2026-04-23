@@ -26,6 +26,7 @@ public:
     void OnKeyUp(uint32_t a_key, const char* a_userEvent = "");
     bool IsValidTarget(RE::Actor* a_actor) const;
     RE::Actor* GetCrosshairActor() const;
+    void TryGrabWithSpell();
 
     enum class State
     {
