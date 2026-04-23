@@ -30,7 +30,6 @@ namespace
             break;
         case SKSE::MessagingInterface::kInputLoaded:
             Hooks::Install();
-            Hooks::InstallGrabActorEffectHook();
             SKSE::log::info("Hooks installed");
             break;
         case SKSE::MessagingInterface::kDataLoaded:
