@@ -64,6 +64,8 @@ private:
     bool noSpeedPenalty{ true };
     float dragSpeedMult{ 3.0f };
     float savedSpeedMult{ 0.0f };
+    bool useShoutKeyForRelease{ true };
+    float grabHoldDist{ 150.0f };
 
     float throwImpulseMax{ 10.0f };
     float throwDropWindow{ 0.5f };

@@ -90,6 +90,8 @@ bool DragHandler::LoadSettings()
     actionKey = static_cast<uint32_t>(getInt("General", "iActionKey", 34));
     noSpeedPenalty = getBool("General", "bNoSpeedPenalty", true);
     dragSpeedMult = getFloat("General", "fDragSpeedMult", 3.0f);
+    useShoutKeyForRelease = getBool("General", "bUseShoutKeyForRelease", true);
+    grabHoldDist = getFloat("General", "fGrabHoldDist", 150.0f);
 
     throwImpulseMax = getFloat("Throw", "fThrowImpulseMax", 10.0f);
     throwDropWindow = getFloat("Throw", "fThrowDropWindow", 0.5f);
@@ -352,8 +354,36 @@ void DragHandler::UpdateGrabState()
                 state = State::Dragging;
                 std::string name = grabbedActor->GetDisplayFullName();
                 SKSE::log::info("Grabbed: {} ({:08X})", name, grabbedActor->GetFormID());
+
+                float paralysis = grabbedActor->AsActorValueOwner()->GetActorValue(RE::ActorValue::kParalysis);
+                if (paralysis > 0.0f) {
+                    SKSE::log::info("Actor has paralysis={:.1f}, resetting ragdoll", paralysis);
+                    grabbedActor->AsActorValueOwner()->SetActorValue(RE::ActorValue::kParalysis, 0.0f);
+                    grabbedActor->AsActorValueOwner()->SetActorValue(RE::ActorValue::kParalysis, 1.0f);
+                }
+
                 ApplySpeedBoost(player);
             }
+        }
+    }
+
+    if (state == State::Dragging && player->IsGrabbing()) {
+        auto& grabSpring = player->GetPlayerRuntimeData().grabSpring;
+        for (auto& springRef : grabSpring) {
+            if (!springRef) continue;
+            auto bhkObj = reinterpret_cast<RE::bhkRefObject*>(springRef.get());
+            if (!bhkObj || !bhkObj->referencedObject) continue;
+            auto actionBase = reinterpret_cast<std::uintptr_t>(bhkObj->referencedObject.get());
+
+            auto playerPos = player->GetPosition();
+            float yaw = player->data.angle.z;
+            float fwdX = std::sin(yaw);
+            float fwdY = -std::cos(yaw);
+
+            auto* mousePos = reinterpret_cast<RE::hkVector4*>(actionBase + 0x50);
+            mousePos->quad.m128_f32[0] = (playerPos.x + fwdX * grabHoldDist) * BS_TO_HK_SCALE;
+            mousePos->quad.m128_f32[1] = (playerPos.y + fwdY * grabHoldDist) * BS_TO_HK_SCALE;
+            mousePos->quad.m128_f32[2] = (playerPos.z + 50.0f) * BS_TO_HK_SCALE;
         }
     }
 
@@ -380,7 +410,7 @@ void DragHandler::UpdateGrabState()
 
 void DragHandler::OnKeyDown(uint32_t a_key, const char* a_userEvent)
 {
-    if (state == State::Dragging && strcmp(a_userEvent, "Shout") == 0 && !spellCastDetected) {
+    if (state == State::Dragging && useShoutKeyForRelease && strcmp(a_userEvent, "Shout") == 0 && !spellCastDetected) {
         spellCastDetected = true;
         spellCastTime = std::chrono::steady_clock::now();
         SKSE::log::info("Power/Shout key down while dragging, charging throw");
@@ -396,7 +426,7 @@ void DragHandler::OnKeyDown(uint32_t a_key, const char* a_userEvent)
 
 void DragHandler::OnKeyUp(uint32_t a_key, const char* a_userEvent)
 {
-    bool isShoutUp = (strcmp(a_userEvent, "Shout") == 0) && spellCastDetected;
+    bool isShoutUp = useShoutKeyForRelease && (strcmp(a_userEvent, "Shout") == 0) && spellCastDetected;
     bool isActionUp = (a_key == actionKey) && actionKeyHeld;
 
     if (!isShoutUp && !isActionUp) return;
