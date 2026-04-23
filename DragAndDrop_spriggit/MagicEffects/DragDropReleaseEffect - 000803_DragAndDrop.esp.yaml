@@ -17,8 +17,6 @@ CastType: FireAndForget
 DualCastScale: 1
 CastingSoundLevel: Silent
 Sounds: []
-Scripts:
-- Name: DragDropReleaseScript
 Description:
   TargetLanguage: English
   Value: ''

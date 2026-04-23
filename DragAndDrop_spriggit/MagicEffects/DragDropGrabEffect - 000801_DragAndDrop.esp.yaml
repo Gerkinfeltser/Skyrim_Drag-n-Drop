@@ -7,7 +7,6 @@ MenuDisplayObject: 1097CB:Skyrim.esm
 Keywords:
 - 07F404:Skyrim.esm
 Flags:
-- Hostile
 - Recover
 - Painless
 Archetype:
@@ -37,11 +36,13 @@ Conditions:
     MutagenObjectType: GetDeadConditionData
   ComparisonValue: 1
 - MutagenObjectType: ConditionFloat
+  CompareOperator: GreaterThanOrEqualTo
   Flags:
   - OR
   Data:
-    MutagenObjectType: GetDeadConditionData
-  ComparisonValue: 0
+    MutagenObjectType: GetActorValueConditionData
+    ActorValue: Paralysis
+  ComparisonValue: 0.1
 - MutagenObjectType: ConditionFloat
   Data:
     MutagenObjectType: HasKeywordConditionData
@@ -58,4 +59,4 @@ Conditions:
   Data:
     MutagenObjectType: GetDistanceConditionData
     Target: 000014:Skyrim.esm
-  ComparisonValue: 150
+  ComparisonValue: 80
