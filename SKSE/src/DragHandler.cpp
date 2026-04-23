@@ -112,6 +112,12 @@ void DragHandler::OnDataLoad()
     } else {
         SKSE::log::warn("Data loaded, TESDataHandler not available");
     }
+
+    auto player = RE::PlayerCharacter::GetSingleton();
+    if (player && grabSpell) {
+        player->AddSpell(grabSpell);
+        SKSE::log::info("Added grab spell to player via AddSpell");
+    }
 }
 
 bool DragHandler::IsValidTarget(RE::Actor* a_actor) const
