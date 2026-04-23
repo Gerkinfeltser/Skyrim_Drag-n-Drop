@@ -354,14 +354,6 @@ void DragHandler::UpdateGrabState()
                 state = State::Dragging;
                 std::string name = grabbedActor->GetDisplayFullName();
                 SKSE::log::info("Grabbed: {} ({:08X})", name, grabbedActor->GetFormID());
-
-                float paralysis = grabbedActor->AsActorValueOwner()->GetActorValue(RE::ActorValue::kParalysis);
-                if (paralysis > 0.0f) {
-                    SKSE::log::info("Actor has paralysis={:.1f}, resetting ragdoll", paralysis);
-                    grabbedActor->AsActorValueOwner()->SetActorValue(RE::ActorValue::kParalysis, 0.0f);
-                    grabbedActor->AsActorValueOwner()->SetActorValue(RE::ActorValue::kParalysis, 1.0f);
-                }
-
                 ApplySpeedBoost(player);
             }
         }
