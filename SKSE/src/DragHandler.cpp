@@ -16,14 +16,7 @@ GrabActorUpdateFn g_originalGrabActorUpdate = nullptr;
 
 void GrabActorEffectUpdate_Hook(RE::GrabActorEffect* a_effect, float a_delta)
 {
-    static std::chrono::steady_clock::time_point lastLogTime;
     static int updateCount = 0;
-
-    if (g_originalGrabActorUpdate) {
-        g_originalGrabActorUpdate(a_effect, a_delta);
-    }
-
-    auto now = std::chrono::steady_clock::now();
 
     if (!a_effect) return;
 
@@ -36,70 +29,44 @@ void GrabActorEffectUpdate_Hook(RE::GrabActorEffect* a_effect, float a_delta)
     auto grabbedActor = grabbedRef->As<RE::Actor>();
     if (!grabbedActor) return;
 
-    auto playerEffectList = player->AsMagicTarget()->GetActiveEffectList();
-    bool isOnPlayer = false;
-    if (playerEffectList) {
-        for (auto it = playerEffectList->begin(); it != playerEffectList->end(); ++it) {
-            if (*it == a_effect) {
-                isOnPlayer = true;
-                break;
-            }
-        }
-    }
-
-    auto npcEffectList = grabbedActor->AsMagicTarget()->GetActiveEffectList();
-    bool isOnNPC = false;
-    if (npcEffectList) {
-        for (auto it = npcEffectList->begin(); it != npcEffectList->end(); ++it) {
-            if (*it == a_effect) {
-                isOnNPC = true;
-                break;
-            }
-        }
-    }
-
     auto& grabSpring = player->GetPlayerRuntimeData().grabSpring;
-    for (auto& springRef : grabSpring) {
-        if (!springRef) continue;
-        auto bhkObj = reinterpret_cast<RE::bhkRefObject*>(springRef.get());
-        if (!bhkObj || !bhkObj->referencedObject) continue;
-        auto actionBase = reinterpret_cast<std::uintptr_t>(bhkObj->referencedObject.get());
+    if (grabSpring.empty()) return;
 
-        auto* mousePos = reinterpret_cast<RE::hkVector4*>(actionBase + 0x50);
-        float x = mousePos->quad.m128_f32[0];
-        float y = mousePos->quad.m128_f32[1];
-        float z = mousePos->quad.m128_f32[2];
-        auto* springForce = reinterpret_cast<float*>(actionBase + 0x48);
+    auto& springRef = grabSpring[0];
+    if (!springRef) return;
 
-        bool wasNearZero = (std::abs(x) < 5.0f && std::abs(y) < 5.0f && std::abs(z) < 5.0f);
+    auto bhkObj = reinterpret_cast<RE::bhkRefObject*>(springRef.get());
+    if (!bhkObj || !bhkObj->referencedObject) return;
 
-        if (updateCount % 60 == 0) {
-            SKSE::log::info("HOOK_UPDATE[{}]: effect={:p} grabbed={} isOnPlayer={} isOnNPC={} mousePos=({:.1f},{:.1f},{:.1f}) force={:.4f}",
-                updateCount, (void*)a_effect, a_effect->grabbed, isOnPlayer, isOnNPC, x, y, z, *springForce);
-        }
+    auto actionBase = reinterpret_cast<std::uintptr_t>(bhkObj->referencedObject.get());
+    auto* mousePos = reinterpret_cast<RE::hkVector4*>(actionBase + 0x50);
+    auto* springForce = reinterpret_cast<float*>(actionBase + 0x48);
 
-        if (wasNearZero) {
-            auto playerPos = player->GetPosition();
-            float yaw = player->data.angle.z;
-            float fwdX = std::sin(yaw);
-            float fwdY = -std::cos(yaw);
+    float grabDist = player->GetPlayerRuntimeData().grabDistance;
+    if (grabDist < 10.0f) grabDist = 150.0f;
 
-            float targetX = (playerPos.x + fwdX * 150.0f) * 0.0142875f;
-            float targetY = (playerPos.y + fwdY * 150.0f) * 0.0142875f;
-            float targetZ = (playerPos.z + 50.0f) * 0.0142875f;
+    float bsToHk = 70.0f;
 
-            mousePos->quad.m128_f32[0] = targetX;
-            mousePos->quad.m128_f32[1] = targetY;
-            mousePos->quad.m128_f32[2] = targetZ;
-            *springForce = 0.1556f;
+    auto camMatrix = RE::PlayerCamera::GetSingleton()->cameraRoot->world.rotate;
+    float forwardX = camMatrix.entry[0][1];
+    float forwardY = camMatrix.entry[1][1];
+    float forwardZ = camMatrix.entry[2][1];
 
-            auto elapsed = std::chrono::duration<float>(now - lastLogTime).count();
-            if (elapsed > 0.5f) {
-                SKSE::log::info("HOOK_FIX: mousePos was ({:.1f},{:.1f},{:.1f}) -> ({:.1f},{:.1f},{:.1f}), force={:.4f}",
-                    x, y, z, targetX, targetY, targetZ, *springForce);
-                lastLogTime = now;
-            }
-        }
+    float targetX = player->GetPosition().x + forwardX * grabDist;
+    float targetY = player->GetPosition().y + forwardY * grabDist;
+    float targetZ = player->GetPosition().z + forwardZ * grabDist;
+
+    mousePos->quad.m128_f32[0] = targetX / bsToHk;
+    mousePos->quad.m128_f32[1] = targetY / bsToHk;
+    mousePos->quad.m128_f32[2] = targetZ / bsToHk;
+    mousePos->quad.m128_f32[3] = 0.0f;
+
+    if (updateCount % 60 == 0) {
+        SKSE::log::info("HOOK_UPDATE[{}]: mousePos=({:.1f},{:.1f},{:.1f}) BS=({:.1f},{:.1f},{:.1f}) force={:.4f}",
+            updateCount,
+            mousePos->quad.m128_f32[0], mousePos->quad.m128_f32[1], mousePos->quad.m128_f32[2],
+            targetX, targetY, targetZ,
+            *springForce);
     }
 
     updateCount++;
@@ -835,6 +802,18 @@ void DragHandler::TryGrabWithSpell()
         player->GetPlayerRuntimeData().grabDistance = holdDist;
         player->GetPlayerRuntimeData().grabbedObject = target->CreateRefHandle();
 
+        player->StartGrabObject();
+
+        auto& grabSpring = player->GetPlayerRuntimeData().grabSpring;
+        SKSE::log::info("TryGrabWithSpell: StartGrabObject called, grabSpring.size={} IsGrabbing={}", 
+            grabSpring.size(), player->IsGrabbing());
+
+        if (grabSpring.size() > 0) {
+            SKSE::log::info("TryGrabWithSpell: StartGrabObject SUCCESS - spring created!");
+            return;
+        }
+
+        SKSE::log::info("TryGrabWithSpell: StartGrabObject failed, falling back to CastSpellImmediate");
         auto spell = RE::TESDataHandler::GetSingleton()->LookupForm<RE::SpellItem>(0x800, "DragAndDrop.esp");
         if (!spell) return;
 

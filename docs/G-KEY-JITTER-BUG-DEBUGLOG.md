@@ -26,14 +26,15 @@
 
 ---
 
-## Attempted Fixes (13 attempts)
+## Attempted Fixes (15 attempts)
 
 | # | Approach | Date | Result |
 |---|----------|------|--------|
 | 1 | Remove all our mousePos writes — let GrabActor effect manage it entirely | Apr 23 | **Still jittery** — effect itself produces the alternation |
 | 2 | Pre-set `grabbedObject`, `grabDistance`, `grabObjectWeight=0` before CastSpellImmediate | Apr 23 | **Still jittery** |
 | 3 | `DispatchStaticCall` → Papyrus `Spell.Cast` (async, different pipeline) | Apr 23 | **Still jittery** |
-| 4 | `StartGrabObject()` instead of spell cast | Apr 23 | **Doesn't work** — native grab doesn't pick up NPCs with weight limits |
+| 4 | `StartGrabObject()` instead of spell cast | Apr 23 | **Doesn't create spring for NPCs** (early test, no pre-set grabDistance/grabbedObject) |
+| 15 | StartGrabObject() primary + CastSpellImmediate fallback + VMT skip-original hook | Apr 23 | **Still jittery** — StartGrabObject creates spring (size>0 confirmed), spring still jitters. CastSpellImmediate fallback also jitters |
 | 5 | `AddTask` to defer the cast to next frame tick (kInstant caster) | Apr 23 | **Still jittery** |
 | 6 | `AddTask` with `kRightHand` caster (mimic power-menu hand) | Apr 23 | **Still jittery** |
 | 7 | Dispel GrabActor effect immediately after grab | Apr 23 | **Breaks grab** — IsGrabbing goes false, spring destroyed |
@@ -43,6 +44,8 @@
 | 11 | Tune spring: damping 1.5, elasticity 0.05, maxForce 500 | Apr 23 | **Still jittery** — near-zero alternation persists, velocity climbs |
 | 12 | Zero springForce on bad frames (mousePos near-zero), restore on good frames | Apr 23 | **Still jittery** — alternation pattern continues regardless of force zeroing |
 | 13 | Write mousePos FIRST, then check if it was near-zero and zero springForce if so | Apr 23 | **Still jittery** — effect's write still corrupts on odd frames |
+| 14 | VMT hook on GrabActorEffect::Update — calls original then fixes mousePos | Apr 23 | **Still jittery** — Havok reads before our fix |
+| 15 | VMT hook — skip original Update, write mousePos ourselves each frame | Apr 23 | **Still jittery** — same timing problem |
 
 ---
 
@@ -75,23 +78,18 @@ for (auto it = effectList->begin(); it != effectList->end(); ++it)
 
 ## Next Steps (Priority Order)
 
-### Option A: Hook GrabActorEffect::Update (VMT patching)
-Patch the vtable at `0x7ff603cfcb90` (virtual index 4 = offset 0x28) to intercept the near-zero mousePos write.
+### Option B: Manual bhkMouseSpringAction creation (RECOMMENDED)
+Bypass both CastSpellImmediate and StartGrabObject. Create the spring manually with correct parameters. No effect → no oscillation → no jitter.
 
-**Steps:**
-1. Allocate trampoline via `SKSE::AllocTrampoline(128)`
-2. Write a 5-byte jmp from UpdateFn to our detour
-3. In detour: check if m_mouseWorldPos would be written to near-zero; if so, skip the write
+**Needs:** `bhkMouseSpringAction` constructor signature — requires IDA/x64dbg on Skyrim binary. RTTI IDs known: hkp=397791, bhk=394744.
 
-**Risks:** Version-dependent, crashes if vtable offset is wrong
+### Short-term: Accept power-menu grab
+Power-menu grab (Z + spell) works smooth. G-key remains experimental/jittery. Users can use power menu for dragging.
 
-### Option B: Create Havok mouse spring manually
-Bypass GrabActor entirely. Create `bhkMouseSpringAction` manually and add to player's `grabSpring` array.
-
-**Needs:** `bhkMouseSpringAction` constructor signature (not yet found), RTTI IDs (hkp=397791, bhk=394744)
-
-### Option C: Run power-menu grab to measure velocity baseline
-Does power-menu grab stay stable from t=0? If yes, the difference reveals what initialization path affects.
+### Not worth pursuing further
+- VMT hooks (attempts 14-15): oscillation originates in native grab system, not the effect's Update
+- StartGrabObject (attempt 15): creates springs correctly but they still jitter — the problem is deeper than the effect
+- Spring parameter tuning: doesn't fix the oscillation driver
 
 ---
 
@@ -112,56 +110,50 @@ Scale: `BS_TO_HK_SCALE = 0.0142875f`, `HK_TO_BS_SCALE = 69.991251f`
 
 ---
 
-## Attempt #14 — VMT Hook on GrabActorEffect::Update (Apr 23) — FAILED
+## Attempt #14 — VMT Hook: Skip Original Update, Write MousePos Ourselves (Apr 23) — FAILED
 
-**Status:** Built and working (hook fires every frame), but **does not fix jitter**.
+**Status:** Built and deployed, but **does not fix jitter**.
 
 ### What was built
 
-- Hook installed via `WriteProcessMemory` + `VirtualProtect` on vtable slot at `VTABLE_GrabActorEffect[0] + 0x28`
-- Hook function calls original Update first, then checks if mousePos (+0x50) is near-zero (all components < 5.0f)
-- When near-zero detected, computes correct mousePos from player position + yaw and writes it; also sets springForce to 0.1556
-- Hook fires every frame on all GrabActorEffect instances
+- VMT hook installed via `WriteProcessMemory` + `VirtualProtect`
+- Hook **skips calling** `g_originalGrabActorUpdate()` entirely
+- Each frame: computes `mousePos = playerPos + cameraForward * grabDist` in BS units, converts to HK units (÷70), writes directly to `actionBase + 0x50`
+- Camera forward extracted from `PlayerCamera::GetSingleton()->cameraRoot->world.rotate`
 
 ### Why it doesn't fix the jitter
 
-**The fundamental timing problem:**
-1. Effect's Update runs → writes mousePos (sometimes near-zero `(0.4, -0.5, 0.2)`, sometimes correct `(310, 68, -64)`)
-2. Hook runs AFTER effect's Update → detects near-zero → writes correct value
-3. **Havok already read the near-zero value in step 1** before our hook could fix it
-4. Next frame: effect writes near-zero again → cycle repeats
+Even bypassing the original Update doesn't stop the jitter. Possible reasons:
+- Coordinate space mismatch: our mousePos computation might not match what Havok expects
+- `grabDistance` from `player->GetPlayerRuntimeData().grabDistance` might not reflect actual spring length
+- The spring reads other fields we haven't corrected (attachment point, other parameters)
+- The grab state itself (grabbedObject, grabDistance) drives oscillation regardless of mousePos
 
-The effect's Update alternation appears to be **internally driven** — same effect instance (`0x280c4de34c0`) produces correct on one Update call and near-zero on the next, suggesting the effect reads from some cached/flopping player state during its computation.
+### Attempt #15 — StartGrabObject Test (Apr 23) — FAILED
 
-**Evidence from log:**
-```
-HOOK_UPDATE[60]: effect=0x280c4de34c0 grabbed=true isOnPlayer=false isOnNPC=true mousePos=(312.2,68.6,-63.3) force=0.1556
-HOOK_UPDATE[120]: effect=0x280c4de34c0 grabbed=true isOnPlayer=false isOnNPC=true mousePos=(1.2,0.3,0.6) force=0.1556
-```
-Same effect instance, same grabbed=true, same isOnNPC=true — but alternates between correct and near-zero.
+**What was tested:** Modified `TryGrabWithSpell()` to call `player->StartGrabObject()` before falling back to CastSpellImmediate.
 
-**Velocity keeps climbing** (5.55 → 34 → 79 avgPerBody) even with the hook fixing mousePos, because the alternating force direction from the oscillation keeps adding energy. The hook can't prevent Havok from having already read the bad value.
+**Flow:**
+1. Set `grabObjectWeight=0`, `grabDistance=150`, `grabbedObject=crosshairTarget`
+2. Call `player->StartGrabObject()` (native grab)
+3. Check `grabSpring.size()` — if > 0, skip CastSpellImmediate entirely
+4. If spring not created, fall back to CastSpellImmediate
 
-### Key technical findings
+**Result:** `StartGrabObject()` **DOES create a spring** for NPCs (contrary to old attempt #4 note). Log confirms `grabSpring.size > 0` after StartGrabObject. But the grab still jitters.
 
-- **Hook installation**: `VirtualProtect(PAGE_EXECUTE_READWRITE)` + `WriteProcessMemory` to write 8-byte pointer — works reliably
-- **Hook fires every frame** — not just every 60 frames (counter in logs was for separate debug output interval)
-- **Effect on NPC, not player** — confirmed again: `isOnPlayer=false isOnNPC=true`
-- **Effect alternation is internal** — not caused by player movement or frame timing; same player position produces different results on successive Update calls
+**Correction to old attempt #4:** "Doesn't work — native grab doesn't pick up NPCs" was wrong. StartGrabObject creates a spring on NPCs. The problem is the jitter, not the grab initiation.
 
-### Remaining options
-
-- **Option B (manual spring creation)**: Bypass GrabActor effect entirely. Create `bhkMouseSpringAction` manually and manage spring lifecycle independently. No effect → no effect's bad Update → no oscillation.
-- **Accept power-menu grab** for smooth dragging, G-key remains jittery
-- **Stop trying to fix mousePos** — accept that we can't intercept between effect write and Havok read with this approach
+**Conclusion:** The jitter is NOT caused by the GrabActor effect's Update alternating. StartGrabObject doesn't use GrabActor effect at all (no CastSpellImmediate in the success path), yet the spring still jitters. The oscillation originates in the **native grab system itself** — `player->StartGrabObject()` → spring → jitter. The GrabActor effect is a red herring.
 
 ---
 
 ## Current State
 
-VMT hook (attempt #14) is functional but does NOT fix G-key grab jitter. The hook correctly identifies and fixes near-zero mousePos, but Havok reads the bad value before our fix can apply, and the effect's alternating write continues every frame. Velocity escalation persists.
+All 15 attempts to fix G-key jitter have failed. The root cause is NOT the GrabActor effect's Update alternation — StartGrabObject creates springs without that effect and they still jitter. The oscillation originates in the native grab system.
 
-**Recommended next step: Option B — manual spring creation.** Creating the spring manually bypasses the effect entirely and eliminates the oscillation at its source.
+**Option B (manual spring creation) is the correct solution.** Bypass both CastSpellImmediate and StartGrabObject by creating the `bhkMouseSpringAction` spring manually with correct parameters. Requires IDA/x64dbg to find the constructor signature.
+
+**Short-term workaround:** Use power-menu grab (Z + spell) for smooth dragging. G-key remains experimental/jittery.
 
 ---
 
