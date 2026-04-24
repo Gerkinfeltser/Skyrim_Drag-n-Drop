@@ -105,4 +105,7 @@ private:
     float impactForceSpeedScale{ 1.0f };
     float impactDamageSpeedScale{ 1.0f };
     bool dropOnPlayerHit{ true };
+    float springDamping{ 1.5f };
+    float springElasticity{ 0.05f };
+    float springMaxForce{ 500.0f };
 };

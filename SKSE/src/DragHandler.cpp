@@ -142,6 +142,9 @@ bool DragHandler::LoadSettings()
     impactForceSpeedScale = GetINIFloat(iniPath, "Impact", "fImpactForceSpeedScale", 1.0f);
     impactDamageSpeedScale = GetINIFloat(iniPath, "Impact", "fImpactDamageSpeedScale", 1.0f);
     dropOnPlayerHit = GetINIBool(iniPath, "General", "bDropOnPlayerHit", true);
+    springDamping = GetINIFloat(iniPath, "General", "fSpringDamping", 1.5f);
+    springElasticity = GetINIFloat(iniPath, "General", "fSpringElasticity", 0.05f);
+    springMaxForce = GetINIFloat(iniPath, "General", "fSpringMaxForce", 500.0f);
 
     SKSE::log::info("Settings: enabled={}, range={:.0f}, holdDist={:.0f}, followers={}, children={}, anyone={}, hostile={}",
         enabled, grabRange, grabHoldDist, grabFollowers, grabChildren, grabAnyone, grabHostile);
@@ -453,9 +456,9 @@ void DragHandler::UpdateGrabState()
                     auto* elasticity = reinterpret_cast<float*>(actionBase + 0x64);
                     auto* maxForce = reinterpret_cast<float*>(actionBase + 0x68);
 
-                    *damping = 1.5f;
-                    *elasticity = 0.05f;
-                    *maxForce = 500.0f;
+                    *damping = springDamping;
+                    *elasticity = springElasticity;
+                    *maxForce = springMaxForce;
                 }
 
                 auto cell = player->GetParentCell();
