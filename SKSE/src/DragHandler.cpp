@@ -434,13 +434,9 @@ RE::BSEventNotifyControl DragHandler::ProcessEvent(const RE::TESHitEvent* a_even
 
     if (state == State::Dragging && grabbedActor) {
         SKSE::log::info("Player hit while dragging, dropping NPC");
-        auto formID = grabbedActor->GetFormID();
-        SKSE::GetTaskInterface()->AddTask([this, formID]() {
+        SKSE::GetTaskInterface()->AddTask([this]() {
             if (state != State::Dragging) return;
-            auto actor = RE::TESForm::LookupByID(formID)->As<RE::Actor>();
-            if (actor && grabbedActor == actor) {
-                ReleaseNPC(false, 0.0f);
-            }
+            DoRelease(0.0f);
         });
     }
 
