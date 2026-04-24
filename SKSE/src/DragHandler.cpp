@@ -54,8 +54,13 @@ bool DragHandler::LoadSettings()
     std::filesystem::path iniPath;
     if (logDir) {
         iniPath = *logDir / ".." / "Plugins" / "DragAndDrop.ini";
-    } else {
-        iniPath = "DragAndDrop.ini";
+    }
+
+    if (!std::filesystem::exists(iniPath)) {
+        char modulePathBuf[MAX_PATH];
+        GetModuleFileNameA(nullptr, modulePathBuf, MAX_PATH);
+        std::filesystem::path modulePath(modulePathBuf);
+        iniPath = modulePath.parent_path() / "DragAndDrop.ini";
     }
 
     std::string iniStr = iniPath.string();
