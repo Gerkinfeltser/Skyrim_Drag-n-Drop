@@ -1,6 +1,7 @@
 #pragma once
 
 #include <chrono>
+#include <unordered_map>
 #include <unordered_set>
 
 #include "RE/Skyrim.h"
@@ -94,4 +95,6 @@ private:
     float impactDamageThrownMult{ 1.0f };
     bool impactOnDrop{ false };
     std::unordered_set<RE::FormID> impactHitActors;
+    std::unordered_map<RE::FormID, std::chrono::steady_clock::time_point> swingCooldowns;
+    float swingImpactCooldown{ 1.0f };
 };
