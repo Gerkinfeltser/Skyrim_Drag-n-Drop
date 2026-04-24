@@ -501,6 +501,37 @@ void DragHandler::UpdateGrabState()
     }
 
     if (state == State::Dragging && grabbedActor) {
+        auto grabbed3D = grabbedActor->Get3D();
+        if (grabbed3D) {
+            auto npcPos = grabbed3D->world.translate;
+            auto playerPos = player->Get3D() ? player->Get3D()->world.translate : player->GetPosition();
+            float dx = npcPos.x - playerPos.x;
+            float dy = npcPos.y - playerPos.y;
+            float dz = npcPos.z - playerPos.z;
+            float dist = std::sqrt(dx * dx + dy * dy + dz * dz);
+
+            if (dist > grabHoldDist * 1.5f) {
+                float pullStrength = (std::min)((dist - grabHoldDist * 1.5f) * 1.0f, 50.0f);
+                RE::NiPoint3 dir(-dx / dist, -dy / dist, -dz / dist);
+
+                auto cell = player->GetParentCell();
+                auto bhkWorld = cell ? cell->GetbhkWorld() : nullptr;
+                if (bhkWorld) {
+                    RE::BSWriteLockGuard locker(bhkWorld->worldLock);
+                    auto allBodies = CollectAllRigidBodies(grabbedActor);
+                    RE::hkVector4 pull(dir.x * pullStrength, dir.y * pullStrength, dir.z * pullStrength, 0.0f);
+                    for (auto* body : allBodies) {
+                        if (body) {
+                            float mass = body->motion.GetMass();
+                            if (mass > 0.001f) body->motion.ApplyLinearImpulse(pull * mass);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if (state == State::Dragging && grabbedActor) {
         auto now = std::chrono::steady_clock::now();
         float grabElapsed = std::chrono::duration<float>(now - grabStartTime).count();
         if (grabElapsed < 0.5f) return;
