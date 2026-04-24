@@ -545,6 +545,6 @@ void DragHandler::TryGrabWithSpell()
         auto caster = player->GetMagicCaster(RE::MagicSystem::CastingSource::kRightHand);
         if (!caster) return;
 
-        caster->CastSpellImmediate(grabSpell, false, target, 1.0f, false, 0.0f, player);
+        caster->CastSpellImmediate(grabSpell, false, player, 1.0f, false, 0.0f, player);
     });
 }
