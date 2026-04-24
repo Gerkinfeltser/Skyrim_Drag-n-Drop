@@ -139,6 +139,8 @@ bool DragHandler::LoadSettings()
     swingImpactRadiusMult = GetINIFloat(iniPath, "Impact", "fSwingImpactRadiusMult", 0.5f);
     swingImpactStatics = GetINIBool(iniPath, "Impact", "bSwingImpactStatics", true);
     ragdollMaxVelocity = GetINIFloat(iniPath, "Impact", "fRagdollMaxVelocity", 20.0f);
+    dragMaxVelocity = GetINIFloat(iniPath, "General", "fDragMaxVelocity", 5.0f);
+    grabTetherDist = GetINIFloat(iniPath, "General", "fGrabTetherDist", 600.0f);
     impactForceSpeedScale = GetINIFloat(iniPath, "Impact", "fImpactForceSpeedScale", 1.0f);
     impactDamageSpeedScale = GetINIFloat(iniPath, "Impact", "fImpactDamageSpeedScale", 1.0f);
     dropOnPlayerHit = GetINIBool(iniPath, "General", "bDropOnPlayerHit", true);
@@ -246,6 +248,21 @@ void DragHandler::ApplySpeedBoost(RE::PlayerCharacter* a_player)
     savedSpeedMult = a_player->AsActorValueOwner()->GetActorValue(RE::ActorValue::kSpeedMult);
     a_player->AsActorValueOwner()->SetActorValue(RE::ActorValue::kSpeedMult, savedSpeedMult * dragSpeedMult);
     SKSE::log::info("Speed boost applied: saved={:.1f}, boosted={:.1f}", savedSpeedMult, savedSpeedMult * dragSpeedMult);
+}
+
+void DragHandler::RestoreCollisionFilters()
+{
+    if (savedCollisionInfo.empty()) return;
+    auto player = RE::PlayerCharacter::GetSingleton();
+    if (!player) return;
+    auto cell = player->GetParentCell();
+    auto bhkWorld = cell ? cell->GetbhkWorld() : nullptr;
+    if (!bhkWorld) return;
+    RE::BSWriteLockGuard locker(bhkWorld->worldLock);
+    for (auto& [body, info] : savedCollisionInfo) {
+        if (body) body->collidable.broadPhaseHandle.collisionFilterInfo = info;
+    }
+    savedCollisionInfo.clear();
 }
 
 void DragHandler::RestoreSpeed(RE::PlayerCharacter* a_player)
@@ -471,16 +488,32 @@ void DragHandler::UpdateGrabState()
                         body->motion.SetAngularVelocity(RE::hkVector4());
                     }
                 }
-            } else {
+            } else if (grabbedActor) {
                 SKSE::log::info("UpdateGrabState: engine grab rejected, releasing");
-                player->GetPlayerRuntimeData().grabbedObject = RE::ActorHandle();
+                auto allBodies = CollectAllRigidBodies(grabbedActor);
+                player->DestroyMouseSprings();
+                if (!allBodies.empty()) {
+                    auto cell = player->GetParentCell();
+                    auto bhkWorld = cell ? cell->GetbhkWorld() : nullptr;
+                    if (bhkWorld) {
+                        RE::BSWriteLockGuard locker(bhkWorld->worldLock);
+                        for (auto* body : allBodies) {
+                            if (body) {
+                                body->motion.SetLinearVelocity(RE::hkVector4());
+                                body->motion.SetAngularVelocity(RE::hkVector4());
+                            }
+                        }
+                    }
+                }
                 player->AsMagicTarget()->DispelEffectsWithArchetype(RE::EffectArchetype::kGrabActor, true);
+                player->GetPlayerRuntimeData().grabbedObject = RE::ActorHandle();
                 grabbedActor = nullptr;
             }
         }
     }
 
     if (state == State::Dragging && !player->IsGrabbing()) {
+        RestoreCollisionFilters();
         RestoreSpeed(player);
         grabbedActor = nullptr;
         state = State::None;
@@ -510,22 +543,29 @@ void DragHandler::UpdateGrabState()
             float dz = npcPos.z - playerPos.z;
             float dist = std::sqrt(dx * dx + dy * dy + dz * dz);
 
-            if (dist > grabHoldDist * 1.5f) {
-                float pullStrength = (std::min)((dist - grabHoldDist * 1.5f) * 1.0f, 50.0f);
-                RE::NiPoint3 dir(-dx / dist, -dy / dist, -dz / dist);
+            if (dist > grabTetherDist) {
+                SKSE::log::info("NPC exceeded tether distance ({:.0f} > {:.0f}), dropping", dist, grabTetherDist);
+                ReleaseNPC(false, 0.0f);
+                return;
+            }
+        }
 
-                auto cell = player->GetParentCell();
-                auto bhkWorld = cell ? cell->GetbhkWorld() : nullptr;
-                if (bhkWorld) {
-                    RE::BSWriteLockGuard locker(bhkWorld->worldLock);
-                    auto allBodies = CollectAllRigidBodies(grabbedActor);
-                    RE::hkVector4 pull(dir.x * pullStrength, dir.y * pullStrength, dir.z * pullStrength, 0.0f);
-                    for (auto* body : allBodies) {
-                        if (body) {
-                            float mass = body->motion.GetMass();
-                            if (mass > 0.001f) body->motion.ApplyLinearImpulse(pull * mass);
-                        }
-                    }
+        auto cell = player->GetParentCell();
+        auto bhkWorld = cell ? cell->GetbhkWorld() : nullptr;
+        if (bhkWorld && dragMaxVelocity > 0.0f) {
+            RE::BSWriteLockGuard locker(bhkWorld->worldLock);
+            auto allBodies = CollectAllRigidBodies(grabbedActor);
+            for (auto* body : allBodies) {
+                if (!body) continue;
+                auto& vel = body->motion.linearVelocity;
+                float speed = std::sqrt(vel.quad.m128_f32[0] * vel.quad.m128_f32[0] +
+                                        vel.quad.m128_f32[1] * vel.quad.m128_f32[1] +
+                                        vel.quad.m128_f32[2] * vel.quad.m128_f32[2]);
+                if (speed > dragMaxVelocity && speed > 0.001f) {
+                    float scale = dragMaxVelocity / speed;
+                    vel.quad.m128_f32[0] *= scale;
+                    vel.quad.m128_f32[1] *= scale;
+                    vel.quad.m128_f32[2] *= scale;
                 }
             }
         }
@@ -924,6 +964,7 @@ void DragHandler::DoRelease(float a_heldDuration)
         actionKeyHeld = false;
         actionNotified = false;
         spellCastDetected = false;
+        RestoreCollisionFilters();
         RestoreSpeed(player);
         RE::DebugNotification("Dropped");
         return;

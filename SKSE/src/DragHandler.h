@@ -3,6 +3,7 @@
 #include <chrono>
 #include <unordered_map>
 #include <unordered_set>
+#include <vector>
 
 #include "RE/Skyrim.h"
 #include "SKSE/SKSE.h"
@@ -42,6 +43,7 @@ public:
 private:
     void DrainStamina(float a_dt);
     void ZeroGrabbedVelocity(RE::PlayerCharacter* a_player);
+    void RestoreCollisionFilters();
     void ThrowGrabbedObject(float a_heldDuration);
     void ForceRagdoll(RE::Actor* a_actor);
     RE::hkVector4 GetImpulse(float a_force, float a_mass) const;
@@ -102,10 +104,13 @@ private:
     float swingImpactRadiusMult{ 0.5f };
     bool swingImpactStatics{ true };
     float ragdollMaxVelocity{ 20.0f };
+    float dragMaxVelocity{ 5.0f };
+    float grabTetherDist{ 600.0f };
     float impactForceSpeedScale{ 1.0f };
     float impactDamageSpeedScale{ 1.0f };
     bool dropOnPlayerHit{ true };
     float springDamping{ 1.5f };
     float springElasticity{ 0.05f };
     float springMaxForce{ 500.0f };
+    std::vector<std::pair<RE::hkpRigidBody*, std::uint32_t>> savedCollisionInfo;
 };
