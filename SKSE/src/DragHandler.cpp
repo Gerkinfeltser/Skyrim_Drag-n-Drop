@@ -77,6 +77,9 @@ void DragHandler::OnDataLoad()
     if (dataHandler) {
         grabSpell = dataHandler->LookupForm<RE::SpellItem>(0x800, "DragAndDrop.esp");
         SKSE::log::info("Data loaded, grab spell: {:p}", (void*)grabSpell);
+
+        impactCloakSpell = dataHandler->LookupForm<RE::SpellItem>(0x809, "DragAndDrop.esp");
+        SKSE::log::info("Data loaded, impact cloak spell: {:p}", (void*)impactCloakSpell);
     } else {
         SKSE::log::warn("Data loaded, TESDataHandler not available");
     }
@@ -379,6 +382,97 @@ void DragHandler::UpdateGrabState()
             RE::DebugNotification("Ready to throw!");
         }
     }
+
+    if (state == State::TrackingImpact) {
+        auto now = std::chrono::steady_clock::now();
+        float elapsed = std::chrono::duration<float>(now - impactTrackStart).count();
+
+        if (elapsed > impactDuration) {
+            SKSE::log::info("Impact tracking: timeout after {:.2f}s", elapsed);
+            impactTrackFormID = 0;
+            state = State::None;
+            return;
+        }
+
+        auto thrownActor = RE::TESForm::LookupByID(impactTrackFormID)->As<RE::Actor>();
+        if (!thrownActor) {
+            state = State::None;
+            return;
+        }
+
+        auto thrownPos = thrownActor->GetPosition();
+
+        auto thrownBodies = CollectAllRigidBodies(thrownActor);
+        float totalSpeed = 0.0f;
+        int velCount = 0;
+        for (auto* body : thrownBodies) {
+            if (body) {
+                auto& lv = body->motion.linearVelocity;
+                float s = lv.quad.m128_f32[0] * lv.quad.m128_f32[0] +
+                          lv.quad.m128_f32[1] * lv.quad.m128_f32[1] +
+                          lv.quad.m128_f32[2] * lv.quad.m128_f32[2];
+                totalSpeed += std::sqrt(s);
+                velCount++;
+            }
+        }
+        float avgSpeed = velCount > 0 ? totalSpeed / velCount : 0.0f;
+
+        if (avgSpeed < impactMinVelocity) {
+            SKSE::log::info("Impact tracking: NPC stopped (avgSpeed={:.4f} HK)", avgSpeed);
+            impactTrackFormID = 0;
+            state = State::None;
+            return;
+        }
+
+        auto processLists = RE::ProcessLists::GetSingleton();
+        if (!processLists) return;
+
+        processLists->ForAllActors([&](RE::Actor& actor) {
+            if (actor.GetFormID() == impactTrackFormID) return RE::BSContainer::ForEachResult::kContinue;
+            if (actor.IsPlayerRef()) return RE::BSContainer::ForEachResult::kContinue;
+            if (actor.IsDead()) return RE::BSContainer::ForEachResult::kContinue;
+            if (actor.IsPlayerTeammate()) return RE::BSContainer::ForEachResult::kContinue;
+
+            auto actorPos = actor.GetPosition();
+            float dist = std::sqrt(thrownPos.GetSquaredDistance(actorPos));
+
+            if (dist < impactRadius && impactHitActors.find(actor.GetFormID()) == impactHitActors.end()) {
+                impactHitActors.insert(actor.GetFormID());
+                SKSE::log::info("Impact: {} hit by thrown NPC (dist={:.0f}, speed={:.4f})",
+                    actor.GetDisplayFullName(), dist, avgSpeed);
+
+                auto allBodies = CollectAllRigidBodies(&actor);
+                if (!allBodies.empty()) {
+                    RE::NiPoint3 dir = actorPos - thrownPos;
+                    float len = std::sqrt(dir.x * dir.x + dir.y * dir.y + dir.z * dir.z);
+                    if (len > 0.001f) {
+                        dir.x /= len; dir.y /= len; dir.z /= len;
+                    }
+
+                    RE::hkVector4 impulseHK(
+                        dir.x * impactForce * BS_TO_HK_SCALE,
+                        dir.y * impactForce * BS_TO_HK_SCALE,
+                        dir.z * impactForce * BS_TO_HK_SCALE,
+                        0.0f);
+
+                    auto cell = thrownActor->GetParentCell();
+                    auto bhkWorld = cell ? cell->GetbhkWorld() : nullptr;
+                    if (bhkWorld) {
+                        RE::BSWriteLockGuard locker(bhkWorld->worldLock);
+                        for (auto* body : allBodies) {
+                            if (body) {
+                                float mass = body->motion.GetMass();
+                                if (mass > 0.001f) {
+                                    body->motion.ApplyLinearImpulse(impulseHK * mass);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            return RE::BSContainer::ForEachResult::kContinue;
+        });
+    }
 }
 
 void DragHandler::OnKeyDown(uint32_t a_key, const char* a_userEvent)
@@ -477,8 +571,14 @@ void DragHandler::DoRelease(float a_heldDuration)
             });
         }
 
+        if (grabbedActor) {
+            impactTrackFormID = grabbedActor->GetFormID();
+            impactTrackStart = std::chrono::steady_clock::now();
+            impactHitActors.clear();
+            SKSE::log::info("  Starting impact tracking for {:08X}", impactTrackFormID);
+        }
         grabbedActor = nullptr;
-        state = State::None;
+        state = State::TrackingImpact;
         actionKeyHeld = false;
         actionNotified = false;
         spellCastDetected = false;
@@ -501,9 +601,13 @@ void DragHandler::DoRelease(float a_heldDuration)
     if (grabbedActor) {
         grabbedActor->AsMagicTarget()->DispelEffectsWithArchetype(RE::EffectArchetype::kGrabActor, true);
         grabbedActor->AsActorValueOwner()->SetActorValue(RE::ActorValue::kParalysis, 0.0f);
+        impactTrackFormID = grabbedActor->GetFormID();
+        impactTrackStart = std::chrono::steady_clock::now();
+        impactHitActors.clear();
+        SKSE::log::info("  Starting impact tracking for {:08X} (throw)", impactTrackFormID);
     }
     grabbedActor = nullptr;
-    state = State::None;
+    state = State::TrackingImpact;
     actionKeyHeld = false;
     actionNotified = false;
     spellCastDetected = false;

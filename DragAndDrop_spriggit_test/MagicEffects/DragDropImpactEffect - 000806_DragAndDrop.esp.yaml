@@ -1,0 +1,21 @@
+FormKey: 000806:DragAndDrop.esp
+EditorID: DragDropImpactEffect
+Name:
+  TargetLanguage: English
+  Value: Drag Drop Impact Cloak
+Flags:
+- Recover
+- NoHitEvent
+- NoMagnitude
+- Painless
+- NoHitEffect
+Archetype:
+  MutagenObjectType: MagicEffectCloakArchetype
+  Association: 000808:DragAndDrop.esp
+CastType: Concentration
+DualCastScale: 1
+CastingSoundLevel: Silent
+Sounds: []
+Description:
+  TargetLanguage: English
+  Value: ''

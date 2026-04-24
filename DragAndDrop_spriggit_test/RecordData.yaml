@@ -1,0 +1,13 @@
+SpriggitSource:
+  PackageName: Spriggit.Yaml.Skyrim
+  Version: 0.40.0
+ModKey: DragAndDrop.esp
+GameRelease: SkyrimSE
+ModHeader:
+  Author: Gerkinfeltser
+  Description: Drag & Drop - Grab and throw NPCs
+  MasterReferences:
+  - Master: Skyrim.esm
+    FileSize: 0
+  - Master: Update.esm
+    FileSize: 0

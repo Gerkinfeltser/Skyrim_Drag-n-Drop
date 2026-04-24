@@ -1,0 +1,13 @@
+FormKey: 000802:DragAndDrop.esp
+EditorID: DragDropQuest
+Name:
+  TargetLanguage: English
+  Value: Drag and Drop Quest
+Flags:
+- StartGameEnabled
+NextAliasID: 1
+Aliases:
+- Name: PlayerRef
+  Flags: []
+  ForcedReference: 000014:Skyrim.esm
+  VoiceTypes: Null

@@ -1,0 +1,19 @@
+FormKey: 000808:DragAndDrop.esp
+EditorID: DragDropImpactSpell
+Name:
+  TargetLanguage: English
+  Value: Drag Drop Impact
+Description:
+  TargetLanguage: English
+  Value: ''
+Flags:
+- AreaEffectIgnoresLOS
+- NoAbsorbOrReflect
+ChargeTime: 0.5
+CastType: FireAndForget
+Range: 128
+Effects:
+- BaseEffect: 000807:DragAndDrop.esp
+  Data:
+    Area: 128
+    Duration: 3

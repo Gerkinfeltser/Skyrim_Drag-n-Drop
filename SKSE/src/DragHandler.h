@@ -1,6 +1,7 @@
 #pragma once
 
 #include <chrono>
+#include <unordered_set>
 
 #include "RE/Skyrim.h"
 #include "SKSE/SKSE.h"
@@ -31,7 +32,8 @@ public:
     enum class State
     {
         None,
-        Dragging
+        Dragging,
+        TrackingImpact
     };
 
 private:
@@ -74,8 +76,17 @@ private:
     float throwTimeToMax{ 4.0f };
 
     RE::SpellItem* grabSpell{ nullptr };
+    RE::SpellItem* impactCloakSpell{ nullptr };
     bool spellCastDetected{ false };
     std::chrono::steady_clock::time_point spellCastTime;
 
     std::chrono::steady_clock::time_point grabStartTime;
+
+    RE::FormID impactTrackFormID{ 0 };
+    std::chrono::steady_clock::time_point impactTrackStart;
+    float impactRadius{ 150.0f };
+    float impactDuration{ 1.5f };
+    float impactMinVelocity{ 0.01f };
+    float impactForce{ 300.0f };
+    std::unordered_set<RE::FormID> impactHitActors;
 };
