@@ -50,7 +50,6 @@ Loaded via Win32 `GetPrivateProfileString` using DLL module handle path resoluti
 [General]
 bEnableMod = true              ; Master enable toggle
 fGrabRange = 150.0             ; Max distance to initiate grab
-fGrabHoldDist = 150.0          ; Spring hold distance from player
 bGrabAnyone = false            ; Allow grabbing any NPC (overrides followers/children)
 bGrabFollowers = true          ; Allow grabbing player teammates
 bGrabChildren = false          ; Allow grabbing child actors

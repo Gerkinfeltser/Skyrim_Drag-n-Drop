@@ -112,7 +112,6 @@ bool DragHandler::LoadSettings()
 
     enabled = GetINIBool(iniPath, "General", "bEnableMod", true);
     grabRange = GetINIFloat(iniPath, "General", "fGrabRange", 150.0f);
-    grabHoldDist = GetINIFloat(iniPath, "General", "fGrabHoldDist", 150.0f);
     grabFollowers = GetINIBool(iniPath, "General", "bGrabFollowers", true);
     grabChildren = GetINIBool(iniPath, "General", "bGrabChildren", false);
     grabAnyone = GetINIBool(iniPath, "General", "bGrabAnyone", false);
@@ -148,8 +147,8 @@ bool DragHandler::LoadSettings()
     springElasticity = GetINIFloat(iniPath, "General", "fSpringElasticity", 0.05f);
     springMaxForce = GetINIFloat(iniPath, "General", "fSpringMaxForce", 500.0f);
 
-    SKSE::log::info("Settings: enabled={}, range={:.0f}, holdDist={:.0f}, followers={}, children={}, anyone={}, hostile={}",
-        enabled, grabRange, grabHoldDist, grabFollowers, grabChildren, grabAnyone, grabHostile);
+    SKSE::log::info("Settings: enabled={}, range={:.0f}, followers={}, children={}, anyone={}, hostile={}",
+        enabled, grabRange, grabFollowers, grabChildren, grabAnyone, grabHostile);
     SKSE::log::info("  throw: impulseMax={:.1f}, dropWindow={:.2f}, timeToMax={:.1f}",
         throwImpulseMax, throwDropWindow, throwTimeToMax);
     SKSE::log::info("  impact: radius={:.0f}, duration={:.1f}, minVel={:.2f}, force={:.0f}, pushForce={:.1f}, damage={:.1f}, thrownDmgMult={:.1f}",
@@ -206,6 +205,9 @@ bool DragHandler::IsValidTarget(RE::Actor* a_actor) const
 
     auto player = RE::PlayerCharacter::GetSingleton();
     bool isHostile = player && a_actor->IsHostileToActor(player);
+
+    SKSE::log::info("IsValidTarget: {} dead={} para={} hostile={} follower={} grabHostile={} grabFollowers={}",
+        a_actor->GetDisplayFullName(), isDead, isParalyzed, isHostile, isFollower, grabHostile, grabFollowers);
 
     if (grabHostile && isHostile) return true;
     if (grabFollowers && isFollower) return true;
@@ -1051,9 +1053,8 @@ void DragHandler::TryGrabWithSpell()
 
     RE::FormID targetFormID = target->GetFormID();
     SKSE::log::info("TryGrabWithSpell: target={} ({:08X}) dist={:.0f}", target->GetDisplayFullName(), targetFormID, dist);
-    float holdDist = grabHoldDist;
 
-    SKSE::GetTaskInterface()->AddTask([this, targetFormID, holdDist]() {
+    SKSE::GetTaskInterface()->AddTask([this, targetFormID]() {
         auto player = RE::PlayerCharacter::GetSingleton();
         if (!player) return;
 
@@ -1061,7 +1062,6 @@ void DragHandler::TryGrabWithSpell()
         if (!target) return;
 
         player->GetPlayerRuntimeData().grabObjectWeight = 0.0f;
-        player->GetPlayerRuntimeData().grabDistance = holdDist;
         player->GetPlayerRuntimeData().grabbedObject = target->CreateRefHandle();
 
         auto caster = player->GetMagicCaster(RE::MagicSystem::CastingSource::kRightHand);
