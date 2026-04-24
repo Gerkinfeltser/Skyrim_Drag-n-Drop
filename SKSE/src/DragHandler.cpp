@@ -425,10 +425,29 @@ void DragHandler::OnKeyUp(uint32_t a_key, const char* a_userEvent)
 void DragHandler::DoRelease(float a_heldDuration)
 {
     auto player = RE::PlayerCharacter::GetSingleton();
-    std::vector<RE::hkpRigidBody*> bodiesToZero = CollectAllRigidBodies(grabbedActor);
 
     if (a_heldDuration < throwDropWindow) {
         SKSE::log::info("Dropping ({:.2f}s)", a_heldDuration);
+
+        RE::hkVector4 springBodyVel;
+        bool hasSpringVel = false;
+        if (player) {
+            auto& grabSpring = player->GetPlayerRuntimeData().grabSpring;
+            for (auto& springRef : grabSpring) {
+                if (!springRef) continue;
+                auto bhkObj = reinterpret_cast<RE::bhkRefObject*>(springRef.get());
+                if (!bhkObj || !bhkObj->referencedObject) continue;
+                auto actionBase = reinterpret_cast<std::uintptr_t>(bhkObj->referencedObject.get());
+                auto entityPtr = *reinterpret_cast<RE::hkpEntity**>(actionBase + 0x30);
+                if (!entityPtr) continue;
+                auto hkpRigidBody = reinterpret_cast<RE::hkpRigidBody*>(entityPtr);
+                springBodyVel = hkpRigidBody->motion.linearVelocity;
+                hasSpringVel = true;
+                break;
+            }
+        }
+
+        auto allBodies = CollectAllRigidBodies(grabbedActor);
 
         if (player) {
             player->DestroyMouseSprings();
@@ -439,21 +458,22 @@ void DragHandler::DoRelease(float a_heldDuration)
             grabbedActor->AsActorValueOwner()->SetActorValue(RE::ActorValue::kParalysis, 0.0f);
         }
 
-        if (!bodiesToZero.empty()) {
-            SKSE::GetTaskInterface()->AddTask([bodiesToZero]() {
+        if (hasSpringVel && !allBodies.empty()) {
+            auto capturedBodies = allBodies;
+            auto capturedVel = springBodyVel;
+            SKSE::GetTaskInterface()->AddTask([capturedBodies, capturedVel]() {
                 auto p = RE::PlayerCharacter::GetSingleton();
                 if (!p) return;
                 auto cell = p->GetParentCell();
                 auto bhkWorld = cell ? cell->GetbhkWorld() : nullptr;
                 if (!bhkWorld) return;
                 RE::BSWriteLockGuard locker(bhkWorld->worldLock);
-                for (auto* body : bodiesToZero) {
+
+                for (auto* body : capturedBodies) {
                     if (body) {
-                        body->motion.SetLinearVelocity(RE::hkVector4());
-                        body->motion.SetAngularVelocity(RE::hkVector4());
+                        body->motion.SetLinearVelocity(capturedVel);
                     }
                 }
-                SKSE::log::info("Delayed velocity zero applied ({} bodies)", bodiesToZero.size());
             });
         }
 
