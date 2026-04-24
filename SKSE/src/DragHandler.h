@@ -1,6 +1,7 @@
 #pragma once
 
 #include <chrono>
+#include <vector>
 
 #include "RE/Skyrim.h"
 #include "SKSE/SKSE.h"
@@ -44,6 +45,7 @@ private:
     void ApplySpeedBoost(RE::PlayerCharacter* a_player);
     void RestoreSpeed(RE::PlayerCharacter* a_player);
     void DoRelease(float a_heldDuration);
+    void ReapplyParalysis(RE::Actor* a_actor);
 
     static constexpr float BS_TO_HK_SCALE{ 0.0142875f };
     static constexpr float HK_TO_BS_SCALE{ 69.991251f };
@@ -75,6 +77,7 @@ private:
 
     RE::SpellItem* grabSpell{ nullptr };
     RE::SpellItem* ragdollSpell{ nullptr };
+    std::vector<RE::MagicItem*> savedParalysisSpells;
     bool spellCastDetected{ false };
     std::chrono::steady_clock::time_point spellCastTime;
 

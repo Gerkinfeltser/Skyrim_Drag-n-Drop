@@ -428,6 +428,25 @@ void DragHandler::OnKeyUp(uint32_t a_key, const char* a_userEvent)
     DoRelease(heldDuration);
 }
 
+void DragHandler::ReapplyParalysis(RE::Actor* a_actor)
+{
+    if (savedParalysisSpells.empty()) return;
+
+    SKSE::log::info("Reapplying {} paralysis spells", savedParalysisSpells.size());
+
+    if (a_actor) {
+        for (auto* magicItem : savedParalysisSpells) {
+            auto* spell = skyrim_cast<RE::SpellItem*>(magicItem);
+            if (spell) {
+                a_actor->AddSpell(spell);
+                SKSE::log::info("  Re-added spell: {:08X} \"{}\"", spell->GetFormID(), spell->GetName());
+            }
+        }
+    }
+
+    savedParalysisSpells.clear();
+}
+
 void DragHandler::DoRelease(float a_heldDuration)
 {
     auto player = RE::PlayerCharacter::GetSingleton();
@@ -442,8 +461,9 @@ void DragHandler::DoRelease(float a_heldDuration)
         }
         if (grabbedActor) {
             grabbedActor->AsMagicTarget()->DispelEffectsWithArchetype(RE::EffectArchetype::kGrabActor, true);
-            grabbedActor->AsActorValueOwner()->SetActorValue(RE::ActorValue::kParalysis, 0.0f);
         }
+
+        ReapplyParalysis(grabbedActor);
 
         if (!bodiesToZero.empty()) {
             SKSE::GetTaskInterface()->AddTask([bodiesToZero]() {
@@ -486,8 +506,9 @@ void DragHandler::DoRelease(float a_heldDuration)
     }
     if (grabbedActor) {
         grabbedActor->AsMagicTarget()->DispelEffectsWithArchetype(RE::EffectArchetype::kGrabActor, true);
-        grabbedActor->AsActorValueOwner()->SetActorValue(RE::ActorValue::kParalysis, 0.0f);
     }
+
+    ReapplyParalysis(grabbedActor);
     grabbedActor = nullptr;
     state = State::None;
     actionKeyHeld = false;
@@ -510,8 +531,9 @@ bool DragHandler::ReleaseNPC(bool a_throw, float a_force)
 
     if (grabbedActor) {
         grabbedActor->AsMagicTarget()->DispelEffectsWithArchetype(RE::EffectArchetype::kGrabActor, true);
-        grabbedActor->AsActorValueOwner()->SetActorValue(RE::ActorValue::kParalysis, 0.0f);
     }
+
+    ReapplyParalysis(grabbedActor);
 
     SKSE::log::info("Released (throw={}, force={:.1f})", a_throw, a_force);
 
@@ -549,10 +571,37 @@ SKSE::GetTaskInterface()->AddTask([this, targetFormID, holdDist]() {
             target->GetFormID(), paralysis, target->IsInRagdollState(), target->IsDead());
 
         if (paralysis > 0.0f && ragdollSpell) {
-            SKSE::log::info("  Target paralyzed ({:.1f}), dispelling paralysis effects then casting ragdoll spell", paralysis);
+            SKSE::log::info("  Target paralyzed ({:.1f}), saving spells then dispelling", paralysis);
+
+            savedParalysisSpells.clear();
+            auto* magicTarget = target->AsMagicTarget();
+            if (magicTarget) {
+                auto* effectList = magicTarget->GetActiveEffectList();
+                if (effectList) {
+                    for (auto& effect : *effectList) {
+                        if (effect && effect->GetBaseObject() &&
+                            effect->GetBaseObject()->GetArchetype() == RE::EffectArchetype::kParalysis) {
+                            if (effect->spell) {
+                                bool found = false;
+                                for (auto* s : savedParalysisSpells) {
+                                    if (s == effect->spell) { found = true; break; }
+                                }
+                                if (!found) {
+                                    savedParalysisSpells.push_back(effect->spell);
+                                    SKSE::log::info("  Saved paralysis spell: {:p} \"{}\"",
+                                        (void*)effect->spell, effect->spell->GetName());
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             target->AsMagicTarget()->DispelEffectsWithArchetype(RE::EffectArchetype::kParalysis, true);
             target->AsActorValueOwner()->SetActorValue(RE::ActorValue::kParalysis, 0.0f);
-            SKSE::log::info("  After dispel: paralysis={:.1f}", target->AsActorValueOwner()->GetActorValue(RE::ActorValue::kParalysis));
+            SKSE::log::info("  After dispel: paralysis={:.1f}, saved {} spells",
+                target->AsActorValueOwner()->GetActorValue(RE::ActorValue::kParalysis),
+                savedParalysisSpells.size());
 
             auto caster = player->GetMagicCaster(RE::MagicSystem::CastingSource::kRightHand);
             if (caster) {
