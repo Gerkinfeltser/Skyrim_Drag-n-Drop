@@ -39,6 +39,7 @@ private:
     void ZeroGrabbedVelocity(RE::PlayerCharacter* a_player);
     void ThrowGrabbedObject(float a_heldDuration);
     void ForceRagdoll(RE::Actor* a_actor);
+    void WakeRagdollBodies(RE::Actor* a_actor);
     RE::hkVector4 GetImpulse(float a_force, float a_mass) const;
     float GetForce(float a_heldDuration) const;
     void ApplySpeedBoost(RE::PlayerCharacter* a_player);

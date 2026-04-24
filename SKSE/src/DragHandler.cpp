@@ -279,6 +279,30 @@ void DragHandler::ThrowGrabbedObject(float a_heldDuration)
     });
 }
 
+void DragHandler::WakeRagdollBodies(RE::Actor* a_actor)
+{
+    if (!a_actor) return;
+
+    auto root = a_actor->Get3D();
+    if (!root) return;
+
+    int count = 0;
+    RE::BSVisit::TraverseScenegraphCollision(root, [&](RE::bhkNiCollisionObject* a_colObj) {
+        if (!a_colObj) return RE::BSVisit::BSVisitControl::kContinue;
+        auto colObj = static_cast<RE::bhkCollisionObject*>(a_colObj);
+        auto rigidBody = colObj->GetRigidBody();
+        if (rigidBody && rigidBody->referencedObject) {
+            auto hkpBody = reinterpret_cast<RE::hkpRigidBody*>(rigidBody->referencedObject.get());
+            if (hkpBody && hkpBody->motion.type != RE::hkpMotion::MotionType::kDynamic) {
+                hkpBody->motion.type = RE::hkpMotion::MotionType::kDynamic;
+                count++;
+            }
+        }
+        return RE::BSVisit::BSVisitControl::kContinue;
+    });
+    SKSE::log::info("WakeRagdollBodies: set {} bodies to kDynamic", count);
+}
+
 void DragHandler::ForceRagdoll(RE::Actor* a_actor)
 {
     if (!a_actor) return;
@@ -548,53 +572,23 @@ SKSE::GetTaskInterface()->AddTask([this, targetFormID, holdDist]() {
         SKSE::log::info("TryGrabWithSpell: target={:08X} paralysis={:.1f} ragdollState={} dead={}",
             target->GetFormID(), paralysis, target->IsInRagdollState(), target->IsDead());
 
-        if (paralysis > 0.0f && ragdollSpell) {
-            SKSE::log::info("  Target paralyzed ({:.1f}), dispelling then casting ragdoll spell", paralysis);
+        if (paralysis > 0.0f) {
+            SKSE::log::info("  Target paralyzed ({:.1f}), dispelling then waking bodies", paralysis);
             target->AsMagicTarget()->DispelEffectsWithArchetype(RE::EffectArchetype::kParalysis, true);
             target->AsActorValueOwner()->SetActorValue(RE::ActorValue::kParalysis, 0.0f);
-            SKSE::log::info("  After dispel: paralysis={:.1f}", target->AsActorValueOwner()->GetActorValue(RE::ActorValue::kParalysis));
-
-            auto caster = player->GetMagicCaster(RE::MagicSystem::CastingSource::kRightHand);
-            if (caster) {
-                caster->CastSpellImmediate(ragdollSpell, false, target, 1.0f, false, 0.0f, nullptr);
-            }
-
-            // Wait a few frames for ragdoll spell script to run and unstick the NPC
-            SKSE::GetTaskInterface()->AddTask([this, targetFormID, holdDist]() {
-                SKSE::GetTaskInterface()->AddTask([this, targetFormID, holdDist]() {
-                    SKSE::GetTaskInterface()->AddTask([this, targetFormID, holdDist]() {
-            SKSE::GetTaskInterface()->AddTask([this, targetFormID, holdDist]() {
-                auto player = RE::PlayerCharacter::GetSingleton();
-                if (!player) return;
-
-                auto target = RE::TESForm::LookupByID(targetFormID)->As<RE::Actor>();
-                if (!target) return;
-
-                SKSE::log::info("  Ragdoll spell done, now grabbing");
-
-                player->GetPlayerRuntimeData().grabObjectWeight = 0.0f;
-                player->GetPlayerRuntimeData().grabDistance = holdDist;
-                player->GetPlayerRuntimeData().grabbedObject = target->CreateRefHandle();
-
-                auto caster = player->GetMagicCaster(RE::MagicSystem::CastingSource::kRightHand);
-                if (!caster) return;
-
-                caster->CastSpellImmediate(grabSpell, false, player, 1.0f, false, 0.0f, player);
-            });
-            });
-            });
-            });
-        } else {
-            SKSE::log::info("  Target not paralyzed, grabbing directly");
-
-            player->GetPlayerRuntimeData().grabObjectWeight = 0.0f;
-            player->GetPlayerRuntimeData().grabDistance = holdDist;
-            player->GetPlayerRuntimeData().grabbedObject = target->CreateRefHandle();
-
-            auto caster = player->GetMagicCaster(RE::MagicSystem::CastingSource::kRightHand);
-            if (!caster) return;
-
-            caster->CastSpellImmediate(grabSpell, false, player, 1.0f, false, 0.0f, player);
+            WakeRagdollBodies(target);
+            SKSE::log::info("  After dispel+wake: paralysis={:.1f}", target->AsActorValueOwner()->GetActorValue(RE::ActorValue::kParalysis));
         }
+
+        SKSE::log::info("  Grabbing target");
+
+        player->GetPlayerRuntimeData().grabObjectWeight = 0.0f;
+        player->GetPlayerRuntimeData().grabDistance = holdDist;
+        player->GetPlayerRuntimeData().grabbedObject = target->CreateRefHandle();
+
+        auto caster = player->GetMagicCaster(RE::MagicSystem::CastingSource::kRightHand);
+        if (!caster) return;
+
+        caster->CastSpellImmediate(grabSpell, false, player, 1.0f, false, 0.0f, player);
     });
 }
