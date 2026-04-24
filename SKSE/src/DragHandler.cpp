@@ -538,6 +538,8 @@ void DragHandler::TryGrabWithSpell()
         auto target = RE::TESForm::LookupByID(targetFormID)->As<RE::Actor>();
         if (!target) return;
 
+        target->AsActorValueOwner()->SetActorValue(RE::ActorValue::kParalysis, 0.0f);
+
         player->GetPlayerRuntimeData().grabObjectWeight = 0.0f;
         player->GetPlayerRuntimeData().grabDistance = holdDist;
         player->GetPlayerRuntimeData().grabbedObject = target->CreateRefHandle();
