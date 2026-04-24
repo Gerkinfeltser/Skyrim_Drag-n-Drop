@@ -139,6 +139,8 @@ bool DragHandler::LoadSettings()
     swingImpactRadiusMult = GetINIFloat(iniPath, "Impact", "fSwingImpactRadiusMult", 0.5f);
     swingImpactStatics = GetINIBool(iniPath, "Impact", "bSwingImpactStatics", true);
     ragdollMaxVelocity = GetINIFloat(iniPath, "Impact", "fRagdollMaxVelocity", 20.0f);
+    impactForceSpeedScale = GetINIFloat(iniPath, "Impact", "fImpactForceSpeedScale", 1.0f);
+    impactDamageSpeedScale = GetINIFloat(iniPath, "Impact", "fImpactDamageSpeedScale", 1.0f);
 
     SKSE::log::info("Settings: enabled={}, range={:.0f}, holdDist={:.0f}, followers={}, children={}, anyone={}, hostile={}",
         enabled, grabRange, grabHoldDist, grabFollowers, grabChildren, grabAnyone, grabHostile);
@@ -532,6 +534,8 @@ void DragHandler::UpdateGrabState()
                 SKSE::log::info("Swing impact: {} (dist={:.0f}, speed={:.2f})",
                     actor->GetDisplayFullName(), dist, springSpeed);
 
+                float swingSpeedMult = springSpeed * impactForceSpeedScale;
+
                 RE::NiPoint3 dir = refPos - thrownPos;
                 float len = std::sqrt(dir.x * dir.x + dir.y * dir.y + dir.z * dir.z);
                 if (len > 0.001f) { dir.x /= len; dir.y /= len; dir.z /= len; }
@@ -539,7 +543,8 @@ void DragHandler::UpdateGrabState()
                 if (actor->IsInRagdollState()) {
                     auto allBodies = CollectAllRigidBodies(actor);
                     if (!allBodies.empty()) {
-                        RE::hkVector4 impulseHK(dir.x * impactForce, dir.y * impactForce, dir.z * impactForce, 0.0f);
+                        float scaledForce = impactForce * swingSpeedMult;
+                        RE::hkVector4 impulseHK(dir.x * scaledForce, dir.y * scaledForce, dir.z * scaledForce, 0.0f);
                         auto bhkWorld = cell->GetbhkWorld();
                         if (bhkWorld) {
                             RE::BSWriteLockGuard locker(bhkWorld->worldLock);
@@ -559,8 +564,10 @@ void DragHandler::UpdateGrabState()
                 }
 
                 if (impactDamage > 0.0f) {
-                    float thrownDmg = impactDamage * impactDamageThrownMult;
-                    actor->AsActorValueOwner()->RestoreActorValue(RE::ACTOR_VALUE_MODIFIER::kDamage, RE::ActorValue::kHealth, -impactDamage);
+                    float dmgScale = 1.0f + (springSpeed * impactDamageSpeedScale);
+                    float hitDmg = impactDamage * dmgScale;
+                    float thrownDmg = impactDamage * impactDamageThrownMult * dmgScale;
+                    actor->AsActorValueOwner()->RestoreActorValue(RE::ACTOR_VALUE_MODIFIER::kDamage, RE::ActorValue::kHealth, -hitDmg);
                     if (grabbedActor && !grabbedActor->IsDead()) {
                         grabbedActor->AsActorValueOwner()->RestoreActorValue(RE::ACTOR_VALUE_MODIFIER::kDamage, RE::ActorValue::kHealth, -thrownDmg);
                     }
@@ -680,15 +687,20 @@ void DragHandler::UpdateGrabState()
                 SKSE::log::info("Impact: {} hit by thrown NPC (dist={:.0f}, speed={:.4f})",
                     actor.GetDisplayFullName(), dist, avgSpeed);
 
+                float speedMult = avgSpeed * impactForceSpeedScale;
+
                 if (impactDamage > 0.0f) {
-                    float thrownDmg = impactDamage * impactDamageThrownMult;
+                    float dmgScale = 1.0f + (avgSpeed * impactDamageSpeedScale);
+                    float hitDmg = impactDamage * dmgScale;
+                    float thrownDmg = impactDamage * impactDamageThrownMult * dmgScale;
                     actor.AsActorValueOwner()->RestoreActorValue(
-                        RE::ACTOR_VALUE_MODIFIER::kDamage, RE::ActorValue::kHealth, -impactDamage);
+                        RE::ACTOR_VALUE_MODIFIER::kDamage, RE::ActorValue::kHealth, -hitDmg);
                     if (thrownActor && !thrownActor->IsDead()) {
                         thrownActor->AsActorValueOwner()->RestoreActorValue(
                             RE::ACTOR_VALUE_MODIFIER::kDamage, RE::ActorValue::kHealth, -thrownDmg);
                     }
-                    SKSE::log::info("  Impact damage: {:.1f} (hit), {:.1f} (thrown)", impactDamage, thrownDmg);
+                    SKSE::log::info("  Impact damage: {:.1f} (hit), {:.1f} (thrown), speedScale={:.2f}",
+                        hitDmg, thrownDmg, dmgScale);
                 }
 
                 RE::NiPoint3 dir = actorPos - thrownPos;
@@ -700,10 +712,11 @@ void DragHandler::UpdateGrabState()
                 if (actor.IsDead() || actor.IsInRagdollState()) {
                     auto allBodies = CollectAllRigidBodies(&actor);
                     if (!allBodies.empty()) {
+                        float scaledForce = impactForce * speedMult;
                         RE::hkVector4 impulseHK(
-                            dir.x * impactForce,
-                            dir.y * impactForce,
-                            dir.z * impactForce,
+                            dir.x * scaledForce,
+                            dir.y * scaledForce,
+                            dir.z * scaledForce,
                             0.0f);
 
                         auto cell = thrownActor->GetParentCell();

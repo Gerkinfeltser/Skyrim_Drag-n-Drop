@@ -100,4 +100,6 @@ private:
     float swingImpactRadiusMult{ 0.5f };
     bool swingImpactStatics{ true };
     float ragdollMaxVelocity{ 20.0f };
+    float impactForceSpeedScale{ 1.0f };
+    float impactDamageSpeedScale{ 1.0f };
 };
