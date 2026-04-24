@@ -78,8 +78,8 @@ void DragHandler::OnDataLoad()
         grabSpell = dataHandler->LookupForm<RE::SpellItem>(0x800, "DragAndDrop.esp");
         SKSE::log::info("Data loaded, grab spell: {:p}", (void*)grabSpell);
 
-        impactCloakSpell = dataHandler->LookupForm<RE::SpellItem>(0x809, "DragAndDrop.esp");
-        SKSE::log::info("Data loaded, impact cloak spell: {:p}", (void*)impactCloakSpell);
+        impactCloakSpell = dataHandler->LookupForm<RE::SpellItem>(0x808, "DragAndDrop.esp");
+        SKSE::log::info("Data loaded, impact spell: {:p}", (void*)impactCloakSpell);
     } else {
         SKSE::log::warn("Data loaded, TESDataHandler not available");
     }
@@ -400,8 +400,6 @@ void DragHandler::UpdateGrabState()
             return;
         }
 
-        auto thrownPos = thrownActor->GetPosition();
-
         auto thrownBodies = CollectAllRigidBodies(thrownActor);
         float totalSpeed = 0.0f;
         int velCount = 0;
@@ -416,6 +414,20 @@ void DragHandler::UpdateGrabState()
             }
         }
         float avgSpeed = velCount > 0 ? totalSpeed / velCount : 0.0f;
+
+        auto thrownPos = thrownActor->GetPosition();
+        auto thrown3D = thrownActor->Get3D();
+        if (thrown3D) {
+            auto& worldPos = thrown3D->world;
+            thrownPos.x = worldPos.translate.x;
+            thrownPos.y = worldPos.translate.y;
+            thrownPos.z = worldPos.translate.z;
+        }
+
+        SKSE::log::info("Impact tracking: ragdollCenter=({:.0f},{:.0f},{:.0f}) actorPos=({:.0f},{:.0f},{:.0f}) avgSpeed={:.4f}",
+            thrownPos.x, thrownPos.y, thrownPos.z,
+            thrownActor->GetPosition().x, thrownActor->GetPosition().y, thrownActor->GetPosition().z,
+            avgSpeed);
 
         if (avgSpeed < impactMinVelocity) {
             SKSE::log::info("Impact tracking: NPC stopped (avgSpeed={:.4f} HK)", avgSpeed);
@@ -441,31 +453,43 @@ void DragHandler::UpdateGrabState()
                 SKSE::log::info("Impact: {} hit by thrown NPC (dist={:.0f}, speed={:.4f})",
                     actor.GetDisplayFullName(), dist, avgSpeed);
 
-                auto allBodies = CollectAllRigidBodies(&actor);
-                if (!allBodies.empty()) {
-                    RE::NiPoint3 dir = actorPos - thrownPos;
-                    float len = std::sqrt(dir.x * dir.x + dir.y * dir.y + dir.z * dir.z);
-                    if (len > 0.001f) {
-                        dir.x /= len; dir.y /= len; dir.z /= len;
-                    }
+                RE::NiPoint3 dir = actorPos - thrownPos;
+                float len = std::sqrt(dir.x * dir.x + dir.y * dir.y + dir.z * dir.z);
+                if (len > 0.001f) {
+                    dir.x /= len; dir.y /= len; dir.z /= len;
+                }
 
-                    RE::hkVector4 impulseHK(
-                        dir.x * impactForce * BS_TO_HK_SCALE,
-                        dir.y * impactForce * BS_TO_HK_SCALE,
-                        dir.z * impactForce * BS_TO_HK_SCALE,
-                        0.0f);
+                if (actor.IsDead() || actor.IsInRagdollState()) {
+                    auto allBodies = CollectAllRigidBodies(&actor);
+                    if (!allBodies.empty()) {
+                        RE::hkVector4 impulseHK(
+                            dir.x * impactForce,
+                            dir.y * impactForce,
+                            dir.z * impactForce,
+                            0.0f);
 
-                    auto cell = thrownActor->GetParentCell();
-                    auto bhkWorld = cell ? cell->GetbhkWorld() : nullptr;
-                    if (bhkWorld) {
-                        RE::BSWriteLockGuard locker(bhkWorld->worldLock);
-                        for (auto* body : allBodies) {
-                            if (body) {
-                                float mass = body->motion.GetMass();
-                                if (mass > 0.001f) {
-                                    body->motion.ApplyLinearImpulse(impulseHK * mass);
+                        auto cell = thrownActor->GetParentCell();
+                        auto bhkWorld = cell ? cell->GetbhkWorld() : nullptr;
+                        if (bhkWorld) {
+                            RE::BSWriteLockGuard locker(bhkWorld->worldLock);
+                            for (auto* body : allBodies) {
+                                if (body) {
+                                    float mass = body->motion.GetMass();
+                                    if (mass > 0.001f) {
+                                        body->motion.ApplyLinearImpulse(impulseHK * mass);
+                                    }
                                 }
                             }
+                            SKSE::log::info("  Applied ragdoll impulse to {} bodies", allBodies.size());
+                        }
+                    }
+                } else {
+                    SKSE::log::info("  Standing actor hit, casting PushActorAway spell");
+                    auto player = RE::PlayerCharacter::GetSingleton();
+                    if (player && impactCloakSpell) {
+                        auto caster = player->GetMagicCaster(RE::MagicSystem::CastingSource::kInstant);
+                        if (caster) {
+                            caster->CastSpellImmediate(impactCloakSpell, false, &actor, 1.0f, false, 0.0f, nullptr);
                         }
                     }
                 }

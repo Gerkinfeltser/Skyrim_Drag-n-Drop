@@ -5,14 +5,9 @@ Name:
   Value: Drag Drop Impact
 Flags:
 - NoAbsorbOrReflect
-- AreaEffectIgnoresLOS
 Type: Spell
 CastType: FireAndForget
-Delivery: TargetLocation
-ChargeTime: 0.5
-Range: 128
+Delivery: TargetActor
 Effects:
 - BaseEffect: 000807:DragAndDrop.esp
-  Data:
-    Area: 128
-    Duration: 3
+  Data: {}

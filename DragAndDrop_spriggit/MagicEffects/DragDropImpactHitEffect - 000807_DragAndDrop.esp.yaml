@@ -1,5 +1,8 @@
 FormKey: 000807:DragAndDrop.esp
 EditorID: DragDropImpactHitEffect
+VirtualMachineAdapter:
+  Scripts:
+  - Name: DragDropImpactScript
 Name:
   TargetLanguage: English
   Value: Drag Drop Impact Hit
