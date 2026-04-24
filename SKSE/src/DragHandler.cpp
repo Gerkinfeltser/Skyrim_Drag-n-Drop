@@ -89,6 +89,10 @@ void DragHandler::OnDataLoad()
         player->AddSpell(grabSpell);
         SKSE::log::info("Added grab spell to player via AddSpell");
     }
+    if (player && ragdollSpell) {
+        player->AddSpell(ragdollSpell);
+        SKSE::log::info("Added ragdoll spell to player via AddSpell");
+    }
 }
 
 bool DragHandler::IsValidTarget(RE::Actor* a_actor) const
@@ -552,6 +556,10 @@ SKSE::GetTaskInterface()->AddTask([this, targetFormID, holdDist]() {
                 caster->CastSpellImmediate(ragdollSpell, false, target, 1.0f, false, 0.0f, nullptr);
             }
 
+            // Wait a few frames for ragdoll spell script to run and unstick the NPC
+            SKSE::GetTaskInterface()->AddTask([this, targetFormID, holdDist]() {
+                SKSE::GetTaskInterface()->AddTask([this, targetFormID, holdDist]() {
+                    SKSE::GetTaskInterface()->AddTask([this, targetFormID, holdDist]() {
             SKSE::GetTaskInterface()->AddTask([this, targetFormID, holdDist]() {
                 auto player = RE::PlayerCharacter::GetSingleton();
                 if (!player) return;
@@ -559,7 +567,7 @@ SKSE::GetTaskInterface()->AddTask([this, targetFormID, holdDist]() {
                 auto target = RE::TESForm::LookupByID(targetFormID)->As<RE::Actor>();
                 if (!target) return;
 
-                SKSE::log::info("  Ragdoll spell cast, now grabbing");
+                SKSE::log::info("  Ragdoll spell done, now grabbing");
 
                 player->GetPlayerRuntimeData().grabObjectWeight = 0.0f;
                 player->GetPlayerRuntimeData().grabDistance = holdDist;
@@ -569,6 +577,9 @@ SKSE::GetTaskInterface()->AddTask([this, targetFormID, holdDist]() {
                 if (!caster) return;
 
                 caster->CastSpellImmediate(grabSpell, false, player, 1.0f, false, 0.0f, player);
+            });
+            });
+            });
             });
         } else {
             SKSE::log::info("  Target not paralyzed, grabbing directly");
