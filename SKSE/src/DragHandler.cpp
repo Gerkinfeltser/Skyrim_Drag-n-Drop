@@ -204,11 +204,10 @@ bool DragHandler::IsValidTarget(RE::Actor* a_actor) const
     if (grabAnyone) return true;
     if (isDead || isParalyzed) return true;
 
-    if (grabHostile) {
-        auto player = RE::PlayerCharacter::GetSingleton();
-        if (player && !a_actor->IsHostileToActor(player)) return false;
-    }
+    auto player = RE::PlayerCharacter::GetSingleton();
+    bool isHostile = player && a_actor->IsHostileToActor(player);
 
+    if (grabHostile && isHostile) return true;
     if (grabFollowers && isFollower) return true;
 
     return false;
@@ -447,6 +446,8 @@ RE::BSEventNotifyControl DragHandler::ProcessEvent(const RE::TESHitEvent* a_even
 
 void DragHandler::UpdateGrabState()
 {
+    if (!enabled) return;
+
     auto player = RE::PlayerCharacter::GetSingleton();
     if (!player) return;
 
@@ -855,6 +856,8 @@ void DragHandler::UpdateGrabState()
 
 void DragHandler::OnKeyDown(uint32_t a_key, const char* a_userEvent)
 {
+    if (!enabled) return;
+
     if (state == State::Dragging && useShoutKeyForRelease && strcmp(a_userEvent, "Shout") == 0 && !spellCastDetected) {
         spellCastDetected = true;
         spellCastTime = std::chrono::steady_clock::now();
@@ -1035,8 +1038,19 @@ void DragHandler::TryGrabWithSpell()
     auto target = GetCrosshairActor();
     if (!target || !IsValidTarget(target)) return;
 
+    auto playerPos = player->GetPosition();
+    auto targetPos = target->GetPosition();
+    float dx = playerPos.x - targetPos.x;
+    float dy = playerPos.y - targetPos.y;
+    float dz = playerPos.z - targetPos.z;
+    float dist = std::sqrt(dx * dx + dy * dy + dz * dz);
+    if (dist > grabRange) {
+        SKSE::log::info("TryGrabWithSpell: target too far ({:.0f} > {:.0f})", dist, grabRange);
+        return;
+    }
+
     RE::FormID targetFormID = target->GetFormID();
-    SKSE::log::info("TryGrabWithSpell: target={} ({:08X})", target->GetDisplayFullName(), targetFormID);
+    SKSE::log::info("TryGrabWithSpell: target={} ({:08X}) dist={:.0f}", target->GetDisplayFullName(), targetFormID, dist);
     float holdDist = grabHoldDist;
 
     SKSE::GetTaskInterface()->AddTask([this, targetFormID, holdDist]() {
