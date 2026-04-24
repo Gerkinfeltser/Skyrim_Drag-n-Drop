@@ -64,6 +64,7 @@ private:
     bool grabFollowers{ true };
     bool grabChildren{ false };
     bool grabAnyone{ false };
+    bool grabHostile{ false };
     bool noSpeedPenalty{ true };
     float dragSpeedMult{ 3.0f };
     float savedSpeedMult{ 0.0f };
@@ -89,5 +90,8 @@ private:
     float impactMinVelocity{ 0.01f };
     float impactForce{ 300.0f };
     float impactPushForceMax{ 5.0f };
+    float impactDamage{ 0.0f };
+    float impactDamageThrownMult{ 1.0f };
+    bool impactOnDrop{ false };
     std::unordered_set<RE::FormID> impactHitActors;
 };

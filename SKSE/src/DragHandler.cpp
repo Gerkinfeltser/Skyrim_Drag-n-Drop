@@ -101,6 +101,7 @@ bool DragHandler::LoadSettings()
     grabFollowers = GetINIBool(iniPath, "General", "bGrabFollowers", true);
     grabChildren = GetINIBool(iniPath, "General", "bGrabChildren", false);
     grabAnyone = GetINIBool(iniPath, "General", "bGrabAnyone", false);
+    grabHostile = GetINIBool(iniPath, "General", "bGrabHostile", false);
     staminaDrainRate = GetINIFloat(iniPath, "General", "fStaminaDrainRate", 5.0f);
     dragSpeedMult = GetINIFloat(iniPath, "General", "fDragSpeedMult", 3.0f);
     noSpeedPenalty = GetINIBool(iniPath, "General", "bNoSpeedPenalty", true);
@@ -116,13 +117,16 @@ bool DragHandler::LoadSettings()
     impactMinVelocity = GetINIFloat(iniPath, "Impact", "fImpactMinVelocity", 0.5f);
     impactForce = GetINIFloat(iniPath, "Impact", "fImpactForce", 300.0f);
     impactPushForceMax = GetINIFloat(iniPath, "Impact", "fImpactPushForceMax", 5.0f);
+    impactDamage = GetINIFloat(iniPath, "Impact", "fImpactDamage", 0.0f);
+    impactDamageThrownMult = GetINIFloat(iniPath, "Impact", "fImpactDamageThrownMult", 1.0f);
+    impactOnDrop = GetINIBool(iniPath, "Impact", "bImpactOnDrop", false);
 
-    SKSE::log::info("Settings: enabled={}, range={:.0f}, holdDist={:.0f}, followers={}, children={}, anyone={}",
-        enabled, grabRange, grabHoldDist, grabFollowers, grabChildren, grabAnyone);
+    SKSE::log::info("Settings: enabled={}, range={:.0f}, holdDist={:.0f}, followers={}, children={}, anyone={}, hostile={}",
+        enabled, grabRange, grabHoldDist, grabFollowers, grabChildren, grabAnyone, grabHostile);
     SKSE::log::info("  throw: impulseMax={:.1f}, dropWindow={:.2f}, timeToMax={:.1f}",
         throwImpulseMax, throwDropWindow, throwTimeToMax);
-    SKSE::log::info("  impact: radius={:.0f}, duration={:.1f}, minVel={:.2f}, force={:.0f}, pushForce={:.1f}",
-        impactRadius, impactDuration, impactMinVelocity, impactForce, impactPushForceMax);
+    SKSE::log::info("  impact: radius={:.0f}, duration={:.1f}, minVel={:.2f}, force={:.0f}, pushForce={:.1f}, damage={:.1f}, thrownDmgMult={:.1f}",
+        impactRadius, impactDuration, impactMinVelocity, impactForce, impactPushForceMax, impactDamage, impactDamageThrownMult);
     SKSE::log::info("  misc: staminaDrain={:.1f}, dragSpeed={:.1f}, noSpeedPenalty={}, actionKey=0x{:02X}, shoutKey={}",
         staminaDrainRate, dragSpeedMult, noSpeedPenalty, actionKey, useShoutKeyForRelease);
 
@@ -166,6 +170,12 @@ bool DragHandler::IsValidTarget(RE::Actor* a_actor) const
 
     if (grabAnyone) return true;
     if (isDead || isParalyzed) return true;
+
+    if (grabHostile) {
+        auto player = RE::PlayerCharacter::GetSingleton();
+        if (player && !a_actor->IsHostileToActor(player)) return false;
+    }
+
     if (grabFollowers && isFollower) return true;
 
     return false;
@@ -511,6 +521,17 @@ void DragHandler::UpdateGrabState()
                 SKSE::log::info("Impact: {} hit by thrown NPC (dist={:.0f}, speed={:.4f})",
                     actor.GetDisplayFullName(), dist, avgSpeed);
 
+                if (impactDamage > 0.0f) {
+                    float thrownDmg = impactDamage * impactDamageThrownMult;
+                    actor.AsActorValueOwner()->RestoreActorValue(
+                        RE::ACTOR_VALUE_MODIFIER::kDamage, RE::ActorValue::kHealth, -impactDamage);
+                    if (thrownActor && !thrownActor->IsDead()) {
+                        thrownActor->AsActorValueOwner()->RestoreActorValue(
+                            RE::ACTOR_VALUE_MODIFIER::kDamage, RE::ActorValue::kHealth, -thrownDmg);
+                    }
+                    SKSE::log::info("  Impact damage: {:.1f} (hit), {:.1f} (thrown)", impactDamage, thrownDmg);
+                }
+
                 RE::NiPoint3 dir = actorPos - thrownPos;
                 float len = std::sqrt(dir.x * dir.x + dir.y * dir.y + dir.z * dir.z);
                 if (len > 0.001f) {
@@ -653,14 +674,18 @@ void DragHandler::DoRelease(float a_heldDuration)
             });
         }
 
-        if (grabbedActor) {
+        if (grabbedActor && impactOnDrop) {
             impactTrackFormID = grabbedActor->GetFormID();
             impactTrackStart = std::chrono::steady_clock::now();
             impactHitActors.clear();
             SKSE::log::info("  Starting impact tracking for {:08X}", impactTrackFormID);
         }
         grabbedActor = nullptr;
-        state = State::TrackingImpact;
+        if (impactOnDrop) {
+            state = State::TrackingImpact;
+        } else {
+            state = State::None;
+        }
         actionKeyHeld = false;
         actionNotified = false;
         spellCastDetected = false;
