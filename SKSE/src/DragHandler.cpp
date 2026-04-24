@@ -3,6 +3,7 @@
 
 #include <cstdlib>
 #include <cstdio>
+#include <string>
 #include <vector>
 #include <windows.h>
 
@@ -12,8 +13,49 @@
 #include "RE/B/BShkbAnimationGraph.h"
 #include "RE/T/TESDataHandler.h"
 
+extern "C" IMAGE_DOS_HEADER __ImageBase;
+
 namespace
 {
+    std::string GetINIPath()
+    {
+        char buf[MAX_PATH];
+        GetModuleFileNameA(reinterpret_cast<HMODULE>(&__ImageBase), buf, MAX_PATH);
+        auto* slash = strrchr(buf, '\\');
+        if (slash) slash[1] = '\0';
+        strcat_s(buf, "DragAndDrop.ini");
+        return std::string(buf);
+    }
+
+    std::string GetINIOption(const std::string& a_path, const char* a_section, const char* a_key, const char* a_default)
+    {
+        char buf[256];
+        GetPrivateProfileStringA(a_section, a_key, a_default, buf, sizeof(buf), a_path.c_str());
+        return std::string(buf);
+    }
+
+    bool GetINIBool(const std::string& a_path, const char* a_section, const char* a_key, bool a_default)
+    {
+        auto val = GetINIOption(a_path, a_section, a_key, a_default ? "true" : "false");
+        return val == "true" || val == "1";
+    }
+
+    float GetINIFloat(const std::string& a_path, const char* a_section, const char* a_key, float a_default)
+    {
+        char defBuf[32];
+        std::snprintf(defBuf, sizeof(defBuf), "%.6f", a_default);
+        auto val = GetINIOption(a_path, a_section, a_key, defBuf);
+        return static_cast<float>(std::atof(val.c_str()));
+    }
+
+    int GetINIInt(const std::string& a_path, const char* a_section, const char* a_key, int a_default)
+    {
+        char defBuf[16];
+        std::snprintf(defBuf, sizeof(defBuf), "%d", a_default);
+        auto val = GetINIOption(a_path, a_section, a_key, defBuf);
+        return std::atoi(val.c_str());
+    }
+
     constexpr RE::FormID GHOST_KEYWORD{ 0xD205E };
     constexpr RE::FormID IMMUNE_PARALYSIS_KEYWORD{ 0xF23C5 };
 
@@ -50,23 +92,39 @@ namespace
 
 bool DragHandler::LoadSettings()
 {
-    grabFollowers = true;
-    grabChildren = false;
-    grabAnyone = false;
-    enabled = true;
-    grabRange = 150.0f;
-    grabHoldDist = 150.0f;
-    throwImpulseMax = 10.0f;
-    throwDropWindow = 0.5f;
-    throwTimeToMax = 4.0f;
-    actionKey = 0x22;
-    noSpeedPenalty = true;
-    staminaDrainRate = 5.0f;
-    dragSpeedMult = 3.0f;
-    useShoutKeyForRelease = true;
+    auto iniPath = GetINIPath();
+    SKSE::log::info("Loading settings from: {}", iniPath);
 
-    SKSE::log::info("Settings loaded: enabled={}, range={:.0f}, followers={}, children={}, anyone={}, actionKey={}",
-        enabled, grabRange, grabFollowers, grabChildren, grabAnyone, actionKey);
+    enabled = GetINIBool(iniPath, "General", "bEnableMod", true);
+    grabRange = GetINIFloat(iniPath, "General", "fGrabRange", 150.0f);
+    grabHoldDist = GetINIFloat(iniPath, "General", "fGrabHoldDist", 150.0f);
+    grabFollowers = GetINIBool(iniPath, "General", "bGrabFollowers", true);
+    grabChildren = GetINIBool(iniPath, "General", "bGrabChildren", false);
+    grabAnyone = GetINIBool(iniPath, "General", "bGrabAnyone", false);
+    staminaDrainRate = GetINIFloat(iniPath, "General", "fStaminaDrainRate", 5.0f);
+    dragSpeedMult = GetINIFloat(iniPath, "General", "fDragSpeedMult", 3.0f);
+    noSpeedPenalty = GetINIBool(iniPath, "General", "bNoSpeedPenalty", true);
+    actionKey = static_cast<uint32_t>(GetINIInt(iniPath, "General", "iActionKey", 0x22));
+    useShoutKeyForRelease = GetINIBool(iniPath, "General", "bUseShoutKeyForRelease", true);
+
+    throwImpulseMax = GetINIFloat(iniPath, "Throw", "fThrowImpulseMax", 10.0f);
+    throwDropWindow = GetINIFloat(iniPath, "Throw", "fThrowDropWindow", 0.5f);
+    throwTimeToMax = GetINIFloat(iniPath, "Throw", "fThrowTimeToMax", 4.0f);
+
+    impactRadius = GetINIFloat(iniPath, "Impact", "fImpactRadius", 200.0f);
+    impactDuration = GetINIFloat(iniPath, "Impact", "fImpactDuration", 3.0f);
+    impactMinVelocity = GetINIFloat(iniPath, "Impact", "fImpactMinVelocity", 0.5f);
+    impactForce = GetINIFloat(iniPath, "Impact", "fImpactForce", 300.0f);
+    impactPushForceMax = GetINIFloat(iniPath, "Impact", "fImpactPushForceMax", 5.0f);
+
+    SKSE::log::info("Settings: enabled={}, range={:.0f}, holdDist={:.0f}, followers={}, children={}, anyone={}",
+        enabled, grabRange, grabHoldDist, grabFollowers, grabChildren, grabAnyone);
+    SKSE::log::info("  throw: impulseMax={:.1f}, dropWindow={:.2f}, timeToMax={:.1f}",
+        throwImpulseMax, throwDropWindow, throwTimeToMax);
+    SKSE::log::info("  impact: radius={:.0f}, duration={:.1f}, minVel={:.2f}, force={:.0f}, pushForce={:.1f}",
+        impactRadius, impactDuration, impactMinVelocity, impactForce, impactPushForceMax);
+    SKSE::log::info("  misc: staminaDrain={:.1f}, dragSpeed={:.1f}, noSpeedPenalty={}, actionKey=0x{:02X}, shoutKey={}",
+        staminaDrainRate, dragSpeedMult, noSpeedPenalty, actionKey, useShoutKeyForRelease);
 
     return true;
 }

@@ -88,5 +88,6 @@ private:
     float impactDuration{ 1.5f };
     float impactMinVelocity{ 0.01f };
     float impactForce{ 300.0f };
+    float impactPushForceMax{ 5.0f };
     std::unordered_set<RE::FormID> impactHitActors;
 };
