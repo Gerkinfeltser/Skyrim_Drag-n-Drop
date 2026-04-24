@@ -79,15 +79,22 @@ R = 0x13  (hold to charge throw)
 - Two competing grab operations → physics wigging out
 - Script fires on NPC but the dual-grab conflict ruins it
 
+**CastSpellImmediate target arg matters:**
+- `CastSpellImmediate(spell, false, target, ...)` — the `target` arg overrides delivery
+- Passing `target=NPC` with delivery=Self causes the effect to fire on the NPC (Papyrus logs show "Start effect on NPC cast by Player")
+- Passing `target=player` with delivery=Self causes the effect to fire on player but **the grab doesn't attach** — NPC doesn't move
+- Must pass `target=NPC` with delivery=Self for GrabActor to work (engine needs to know which actor to grab)
+- This is NOT a dual-grab conflict — the engine uses `grabbedObject` (set by C++) for the actual grab target
+
 **Why fresh KO'd NPCs work but reloaded KO'd NPCs don't:**
 - Fresh KO: ragdoll state is "live", physics run normally, GrabActor works smooth
 - Reloaded KO: ragdoll state is "baked" into save, doesn't resume properly → stiff
-- `ForceRagdoll()` (NotifyAnimationGraph + AddRagdollToWorld + body type setting) only fires via `TryGrabWithSpell` (G-key path) — not for power menu grabs
+- `ForceRagdoll()` breaks G-key grab — calling it before `CastSpellImmediate` causes the grab to fail silently (IsGrabbing=true in logs but NPC doesn't move)
 - `DragDropGrabScript.psc` PushActorAway + Paralysis trick needs: (1) Delivery=Self on spell/effect, (2) script must target NPC via `akCaster` not `akTarget`, (3) condition removed so it runs on non-paralyzed NPCs
 
 **G-key grab path vs power menu path:**
-- G-key (with bEnableGKeyGrab=true): fires `TryGrabWithSpell` → `ForceRagdoll` → `grabbedObject` set → `CastSpellImmediate`
-- Power menu: fires `Actor::CastSpell` directly → bypasses `TryGrabWithSpell` → no `ForceRagdoll` called
+- G-key (with bEnableGKeyGrab=true): fires `TryGrabWithSpell` → `grabbedObject` set → `CastSpellImmediate(target=NPC, delivery=Self)` — works but jittery
+- Power menu: fires `Actor::CastSpell` directly → bypasses `TryGrabWithSpell` — no `ForceRagdoll` called, smooth drag
 
 ## Papyrus API
 
@@ -135,9 +142,11 @@ C:\Users\vector\Documents\My Games\Skyrim.INI\SKSE\DragAndDrop.log
 
 ## Not Yet Implemented
 
-- **G-key grab jitter (15 attempts, FAILED).** Root cause: oscillation originates in native grab system, not GrabActor effect's Update. StartGrabObject also produces jittery springs. **Option B (manual spring creation) is the recommended path forward.** `bEnableGKeyGrab` flag (default true — re-enabled for testing).
-- **Power menu cast bypasses IsValidTarget.** Hooked `CastSpellImmediate` on all 6 vtables (MagicCaster, ActorMagicCaster[3], NonActorMagicCaster[2]) — G-key cast fires hook correctly, but power menu uses `Actor::CastSpell` directly and doesn't use `CastSpellImmediate` at all. **Power menu = dev mode** (always casts, no INI gate). G-key respects all INI settings.
+- **G-key grab jitter (15 attempts, FAILED).** Root cause: oscillation originates in native grab system, not GrabActor effect's Update. StartGrabObject also produces jittery springs. **Option B (manual spring creation) is the recommended path forward.** `bEnableGKeyGrab` flag currently true for testing.
+- **ForceRagdoll breaks G-key grab.** Calling `ForceRagdoll(target)` before `CastSpellImmediate` causes grab to fail silently — logs show IsGrabbing=true but NPC doesn't move. Must NOT call ForceRagdoll in the grab path. (v0.1.44-v0.1.51)
+- **CastSpellImmediate target arg must be NPC.** Passing `target=player` with delivery=Self makes the effect fire on player but grab doesn't attach. Must pass `target=NPC`. (v0.1.46-v0.1.48)
+- **Power menu cast bypasses IsValidTarget.** Power menu uses `Actor::CastSpell` directly — no `CastSpellImmediate` hook possible. **Power menu = dev mode** (always casts, no gate). G-key respects all INI settings.
 - Stamina drain while dragging (stub exists, not wired to frame tick)
-- Force ragdoll on stiff/standing dead NPCs (`ForceRagdoll` exists but only called via `TryGrabWithSpell` — power menu path doesn't call it). `DragDropGrabScript.psc` PushActorAway + Paralysis trick needs: (1) Delivery=Self on spell/effect, (2) script must target NPC via `akCaster` not `akTarget`, (3) condition removed so it runs on non-paralyzed NPCs.
+- Force ragdoll on stiff/standing dead NPCs — `ForceRagdoll` exists but breaks grab when called before `CastSpellImmediate`. Need alternative approach (Papyrus script or post-grab timing). `DragDropGrabScript.psc` attached to effect in CK but untested with correct Delivery=Self.
 - Throw damage/stagger to other NPCs on hit
 - Knockout mod reload fix (stashed in Skyrim_KnockoutPatched)
