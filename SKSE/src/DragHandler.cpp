@@ -143,6 +143,7 @@ bool DragHandler::LoadSettings()
     impactForceSpeedScale = GetINIFloat(iniPath, "Impact", "fImpactForceSpeedScale", 1.0f);
     impactDamageSpeedScale = GetINIFloat(iniPath, "Impact", "fImpactDamageSpeedScale", 1.0f);
     dropOnPlayerHit = GetINIBool(iniPath, "General", "bDropOnPlayerHit", true);
+    noSprint = GetINIBool(iniPath, "General", "bNoSprintWhileDragging", true);
     springDamping = GetINIFloat(iniPath, "General", "fSpringDamping", 1.5f);
     springElasticity = GetINIFloat(iniPath, "General", "fSpringElasticity", 0.05f);
     springMaxForce = GetINIFloat(iniPath, "General", "fSpringMaxForce", 500.0f);
@@ -515,10 +516,10 @@ void DragHandler::UpdateGrabState()
         }
     }
 
-    if (state == State::Dragging) {
-        auto actorState = player->AsActorState();
-        if (actorState && actorState->IsSprinting()) {
-            actorState->actorState1.sprinting = 0;
+    if (state == State::Dragging && noSprint) {
+        float stamina = player->AsActorValueOwner()->GetActorValue(RE::ActorValue::kStamina);
+        if (stamina > 0.0f) {
+            player->AsActorValueOwner()->RestoreActorValue(RE::ACTOR_VALUE_MODIFIER::kDamage, RE::ActorValue::kStamina, -stamina);
         }
     }
 
