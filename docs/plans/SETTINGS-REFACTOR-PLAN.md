@@ -176,3 +176,8 @@ Note: `GetDead()` and `IsChild()` and `Paralysis` are free — no globals needed
 **Drop/throw can't be gated without IDA.** `Actor::ThrowObject()` and `DestroyMouseSprings()` are native game functions. To hook them we'd need their memory addresses, which requires reverse-engineering the Skyrim binary with a disassembler like **IDA Pro** (Hex-Rays). We can't obtain those addresses through safe code inspection alone.
 
 **G-key jitter remains.** The alternating mousePos problem in `GrabActorEffect::Update` is internal to the game's effect. Spell hand becomes the primary grab path because it's smooth. G-key is repurposed as the drop/throw key — tap = drop, hold = charge throw, release = throw. G-key no longer initiates grab.
+
+## Required Specs
+<!-- SPECS_START -->
+- cleanup-hooks
+<!-- SPECS_END -->

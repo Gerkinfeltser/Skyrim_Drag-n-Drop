@@ -50,61 +50,23 @@ namespace
 
 bool DragHandler::LoadSettings()
 {
-    auto logDir = SKSE::log::log_directory();
-    std::filesystem::path iniPath;
-    if (logDir) {
-        iniPath = *logDir / ".." / "Plugins" / "DragAndDrop.ini";
-    }
+    grabFollowers = true;
+    grabChildren = false;
+    grabAnyone = false;
+    enabled = true;
+    grabRange = 150.0f;
+    grabHoldDist = 150.0f;
+    throwImpulseMax = 10.0f;
+    throwDropWindow = 0.5f;
+    throwTimeToMax = 4.0f;
+    actionKey = 0x22;
+    noSpeedPenalty = true;
+    staminaDrainRate = 5.0f;
+    dragSpeedMult = 3.0f;
+    useShoutKeyForRelease = true;
 
-    if (!std::filesystem::exists(iniPath)) {
-        char modulePathBuf[MAX_PATH];
-        GetModuleFileNameA(nullptr, modulePathBuf, MAX_PATH);
-        std::filesystem::path modulePath(modulePathBuf);
-        iniPath = modulePath.parent_path() / "DragAndDrop.ini";
-    }
-
-    std::string iniStr = iniPath.string();
-
-    auto getFloat = [&](const char* section, const char* key, float defaultVal) -> float {
-        char buf[64];
-        GetPrivateProfileStringA(section, key, "", buf, sizeof(buf), iniStr.c_str());
-        if (buf[0] == '\0') return defaultVal;
-        float val = static_cast<float>(std::atof(buf));
-        return (val != 0.0f || buf[0] == '0') ? val : defaultVal;
-    };
-
-    auto getBool = [&](const char* section, const char* key, bool defaultVal) -> bool {
-        char buf[16];
-        GetPrivateProfileStringA(section, key, "", buf, sizeof(buf), iniStr.c_str());
-        if (buf[0] == '\0') return defaultVal;
-        return _stricmp(buf, "true") == 0 || std::strcmp(buf, "1") == 0;
-    };
-
-    auto getInt = [&](const char* section, const char* key, int defaultVal) -> int {
-        char buf[16];
-        GetPrivateProfileStringA(section, key, "", buf, sizeof(buf), iniStr.c_str());
-        if (buf[0] == '\0') return defaultVal;
-        return std::atoi(buf);
-    };
-
-    enabled = getBool("General", "bEnableMod", true);
-    grabRange = getFloat("General", "fGrabRange", 150.0f);
-    staminaDrainRate = getFloat("General", "fStaminaDrainRate", 5.0f);
-    grabFollowers = getBool("General", "bGrabFollowers", true);
-    grabChildren = getBool("General", "bGrabChildren", false);
-    grabAnyone = getBool("General", "bGrabAnyone", false);
-    actionKey = static_cast<uint32_t>(getInt("General", "iActionKey", 34));
-    noSpeedPenalty = getBool("General", "bNoSpeedPenalty", true);
-    dragSpeedMult = getFloat("General", "fDragSpeedMult", 3.0f);
-    useShoutKeyForRelease = getBool("General", "bUseShoutKeyForRelease", true);
-    grabHoldDist = getFloat("General", "fGrabHoldDist", 150.0f);
-
-    throwImpulseMax = getFloat("Throw", "fThrowImpulseMax", 10.0f);
-    throwDropWindow = getFloat("Throw", "fThrowDropWindow", 0.5f);
-    throwTimeToMax = getFloat("Throw", "fThrowTimeToMax", 4.0f);
-
-    SKSE::log::info("Settings loaded: enabled={}, range={:.0f}, followers={}, children={}, anyone={}, actionKey={}, noSpeedPenalty={}, maxImpulse={:.1f}, dropWindow={:.2f}s, timeToMax={:.1f}s",
-        enabled, grabRange, grabFollowers, grabChildren, grabAnyone, actionKey, noSpeedPenalty, throwImpulseMax, throwDropWindow, throwTimeToMax);
+    SKSE::log::info("Settings loaded: enabled={}, range={:.0f}, followers={}, children={}, anyone={}, actionKey={}",
+        enabled, grabRange, grabFollowers, grabChildren, grabAnyone, actionKey);
 
     return true;
 }
