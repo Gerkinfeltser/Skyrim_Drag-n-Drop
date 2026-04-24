@@ -430,7 +430,7 @@ RE::BSEventNotifyControl DragHandler::ProcessEvent(const RE::TESHitEvent* a_even
     if (!a_event || !a_event->target || !dropOnPlayerHit) return RE::BSEventNotifyControl::kContinue;
 
     auto player = RE::PlayerCharacter::GetSingleton();
-    if (!player || a_event->target.get() != player) return RE::BSEventNotifyControl::kContinue;
+    if (!player || a_event->target.get()->GetFormID() != player->GetFormID()) return RE::BSEventNotifyControl::kContinue;
 
     if (state == State::Dragging && grabbedActor) {
         SKSE::log::info("Player hit while dragging, dropping NPC");
