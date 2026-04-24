@@ -564,10 +564,24 @@ void DragHandler::UpdateGrabState()
         auto cell = player->GetParentCell();
         auto bhkWorld = cell ? cell->GetbhkWorld() : nullptr;
         if (bhkWorld && dragMaxVelocity > 0.0f) {
+            RE::hkpRigidBody* springBody = nullptr;
+            auto& grabSpring = player->GetPlayerRuntimeData().grabSpring;
+            for (auto& springRef : grabSpring) {
+                if (!springRef) continue;
+                auto bhkObj = reinterpret_cast<RE::bhkRefObject*>(springRef.get());
+                if (!bhkObj || !bhkObj->referencedObject) continue;
+                auto actionBase = reinterpret_cast<std::uintptr_t>(bhkObj->referencedObject.get());
+                auto entityPtr = *reinterpret_cast<RE::hkpEntity**>(actionBase + 0x30);
+                if (entityPtr) {
+                    springBody = reinterpret_cast<RE::hkpRigidBody*>(entityPtr);
+                    break;
+                }
+            }
+
             RE::BSWriteLockGuard locker(bhkWorld->worldLock);
             auto allBodies = CollectAllRigidBodies(grabbedActor);
             for (auto* body : allBodies) {
-                if (!body) continue;
+                if (!body || body == springBody) continue;
                 auto& vel = body->motion.linearVelocity;
                 float speed = std::sqrt(vel.quad.m128_f32[0] * vel.quad.m128_f32[0] +
                                         vel.quad.m128_f32[1] * vel.quad.m128_f32[1] +
