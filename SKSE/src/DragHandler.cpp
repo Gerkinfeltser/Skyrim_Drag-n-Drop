@@ -391,7 +391,7 @@ void DragHandler::OnKeyDown(uint32_t a_key, const char* a_userEvent)
         actionKeyHeld = true;
         actionKeyTime = std::chrono::steady_clock::now();
         SKSE::log::info("Action key down (0x{:02X}), charging throw", a_key);
-    } else if (a_key == actionKey && state == State::None) {
+    } else if (a_key == actionKey && state == State::None && bEnableGKeyGrab) {
         TryGrabWithSpell();
     }
 }

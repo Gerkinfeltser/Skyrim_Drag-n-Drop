@@ -35,12 +35,14 @@ psx compile_psc.bat "Source\Scripts\DragDrop.psc"
 1. **LesserPower** casts GrabActor effect — ESP conditions use tautology (`GetDead==1 OR GetDead==0`) so all actors pass
 2. **C++ IsValidTarget()** does the real filtering based on INI config
 3. **GrabActor** archetype creates Havok mouse spring (engine handles physics attachment)
-4. **G key**: Drop NPC — destroys springs, dispels GrabActor, delayed velocity zero on all ragdoll bodies
+4. **G key**: Release/drop NPC (initiate grab via power menu or spell — G-key grab disabled by default due to jitter)
 5. **R key hold**: Charge throw (shows "Ready to throw!" at threshold)
 6. **R key release**: If held < dropWindow → drop. If held ≥ dropWindow → throw with ramping force
 7. **Throw**: On next frame after spring release, zeros all ragdoll bodies then applies impulse to every body
 
 ## INI Config (`SKSE/Plugins/DragAndDrop.ini`)
+
+> **Deprecated** — INI parsing was removed in v0.1.42-alpha. Settings are now hardcoded defaults in `LoadSettings()`. Future settings will be driven by ESP globals + Papyrus MCM.
 
 ```ini
 [General]
@@ -60,7 +62,7 @@ fThrowTimeToMax = 4.0        ; seconds from charge start to reach max force
 ## Key Scancodes
 
 ```
-G = 0x22  (release/drop)
+G = 0x22  (release/drop only — bEnableGKeyGrab=false by default)
 R = 0x13  (hold to charge throw)
 ```
 
@@ -110,7 +112,7 @@ C:\Users\vector\Documents\My Games\Skyrim.INI\SKSE\DragAndDrop.log
 
 ## Not Yet Implemented
 
-- **G-key grab jitter (15 attempts, FAILED).** Root cause: oscillation originates in native grab system, not GrabActor effect's Update. StartGrabObject also produces jittery springs. **Option B (manual spring creation) is the recommended path forward.**
+- **G-key grab jitter (15 attempts, FAILED).** Root cause: oscillation originates in native grab system, not GrabActor effect's Update. StartGrabObject also produces jittery springs. **Option B (manual spring creation) is the recommended path forward.** `bEnableGKeyGrab` flag added (default false) — code preserved for future re-enable when manual spring path is implemented.
 - **Power menu cast bypasses IsValidTarget.** Hooked `CastSpellImmediate` on all 6 vtables (MagicCaster, ActorMagicCaster[3], NonActorMagicCaster[2]) — G-key cast fires hook correctly, but power menu uses `Actor::CastSpell` directly and doesn't use `CastSpellImmediate` at all. **Power menu = dev mode** (always casts, no INI gate). G-key respects all INI settings.
 - Stamina drain while dragging (stub exists, not wired to frame tick)
 - Force ragdoll on stiff/standing dead NPCs (ForceRagdoll exists but causes issues when called at grab time)
