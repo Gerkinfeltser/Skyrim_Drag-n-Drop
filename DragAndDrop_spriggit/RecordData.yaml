@@ -1,5 +1,5 @@
 SpriggitSource:
-  PackageName: Skyrim
+  PackageName: Spriggit.Yaml.Skyrim
   Version: 0.40.0
 ModKey: DragAndDrop.esp
 GameRelease: SkyrimSE
@@ -11,3 +11,4 @@ ModHeader:
     FileSize: 0
   - Master: Update.esm
     FileSize: 0
+  INTV: 1

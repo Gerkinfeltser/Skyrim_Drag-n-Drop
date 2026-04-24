@@ -5,6 +5,7 @@ Name:
   Value: Drag and Drop Quest
 Flags:
 - StartGameEnabled
+- 0x10
 NextAliasID: 1
 Aliases:
 - Name: PlayerRef

@@ -74,6 +74,7 @@ private:
     float throwTimeToMax{ 4.0f };
 
     RE::SpellItem* grabSpell{ nullptr };
+    RE::SpellItem* ragdollSpell{ nullptr };
     bool spellCastDetected{ false };
     std::chrono::steady_clock::time_point spellCastTime;
 

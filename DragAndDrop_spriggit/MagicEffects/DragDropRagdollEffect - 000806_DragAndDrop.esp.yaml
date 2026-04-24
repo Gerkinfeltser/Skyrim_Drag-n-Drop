@@ -1,0 +1,20 @@
+FormKey: 000806:DragAndDrop.esp
+EditorID: DragDropRagdollEffect
+VirtualMachineAdapter:
+  Scripts:
+  - Name: DragDropRagdollScript
+Name:
+  TargetLanguage: English
+  Value: Unstick Ragdoll
+Flags:
+- Recover
+- Painless
+Archetype:
+  MutagenObjectType: MagicEffectLightArchetype
+CastType: FireAndForget
+DualCastScale: 1
+CastingSoundLevel: Silent
+Sounds: []
+Description:
+  TargetLanguage: English
+  Value: ''

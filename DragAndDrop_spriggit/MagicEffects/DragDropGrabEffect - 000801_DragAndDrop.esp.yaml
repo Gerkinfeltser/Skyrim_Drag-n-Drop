@@ -1,5 +1,8 @@
 FormKey: 000801:DragAndDrop.esp
 EditorID: DragDropGrabEffect
+VirtualMachineAdapter:
+  Scripts:
+  - Name: DragDropGrabScript
 Name:
   TargetLanguage: English
   Value: Drag NPC
@@ -11,6 +14,7 @@ Flags:
 - Painless
 Archetype:
   MutagenObjectType: MagicEffectArchetype
+  ActorValue: GrabActorOffset
   Type: GrabActor
 CastType: FireAndForget
 DualCastScale: 1
