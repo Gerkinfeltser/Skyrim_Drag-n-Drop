@@ -515,6 +515,13 @@ void DragHandler::UpdateGrabState()
         }
     }
 
+    if (state == State::Dragging) {
+        auto actorState = player->AsActorState();
+        if (actorState && actorState->IsSprinting()) {
+            actorState->actorState1.sprinting = 0;
+        }
+    }
+
     if (state == State::Dragging && !player->IsGrabbing()) {
         RestoreCollisionFilters();
         RestoreSpeed(player);
