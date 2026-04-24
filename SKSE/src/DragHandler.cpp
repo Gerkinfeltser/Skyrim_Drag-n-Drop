@@ -512,7 +512,9 @@ void DragHandler::UpdateGrabState()
                 refPos.y = ref3D->world.translate.y;
                 refPos.z = ref3D->world.translate.z;
             }
-            float dist = std::sqrt(thrownPos.GetSquaredDistance(refPos));
+            float dx = thrownPos.x - refPos.x;
+            float dy = thrownPos.y - refPos.y;
+            float dist = std::sqrt(dx * dx + dy * dy);
             if (dist > swingRadius) return RE::BSContainer::ForEachResult::kContinue;
 
             auto cdIt = swingCooldowns.find(a_ref.GetFormID());
@@ -669,7 +671,9 @@ void DragHandler::UpdateGrabState()
             if (actor.IsPlayerTeammate()) return RE::BSContainer::ForEachResult::kContinue;
 
             auto actorPos = actor.GetPosition();
-            float dist = std::sqrt(thrownPos.GetSquaredDistance(actorPos));
+            float dx = thrownPos.x - actorPos.x;
+            float dy = thrownPos.y - actorPos.y;
+            float dist = std::sqrt(dx * dx + dy * dy);
 
             if (dist < impactRadius && impactHitActors.find(actor.GetFormID()) == impactHitActors.end()) {
                 impactHitActors.insert(actor.GetFormID());
