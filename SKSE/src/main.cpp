@@ -3,7 +3,7 @@
 
 namespace
 {
-    constexpr auto VERSION = "0.1.34-alpha";
+    constexpr auto VERSION = "0.1.38-alpha";
     constexpr auto BUILD = __DATE__ " " __TIME__;
 
     void InitializeLog()
@@ -30,6 +30,7 @@ namespace
             break;
         case SKSE::MessagingInterface::kInputLoaded:
             Hooks::Install();
+            Hooks::InstallCastSpellHook();
             SKSE::log::info("Hooks installed");
             break;
         case SKSE::MessagingInterface::kDataLoaded:
