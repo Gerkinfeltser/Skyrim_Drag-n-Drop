@@ -538,8 +538,6 @@ void DragHandler::TryGrabWithSpell()
         auto target = RE::TESForm::LookupByID(targetFormID)->As<RE::Actor>();
         if (!target) return;
 
-        ForceRagdoll(target);
-
         player->GetPlayerRuntimeData().grabObjectWeight = 0.0f;
         player->GetPlayerRuntimeData().grabDistance = holdDist;
         player->GetPlayerRuntimeData().grabbedObject = target->CreateRefHandle();
@@ -547,7 +545,6 @@ void DragHandler::TryGrabWithSpell()
         auto caster = player->GetMagicCaster(RE::MagicSystem::CastingSource::kRightHand);
         if (!caster) return;
 
-        caster->CastSpellImmediate(grabSpell, false, player, 1.0f, false, 0.0f, player);
-    SKSE::log::info("CastSpellImmediate called: spell={:08X}, target=player (self-delivery)", grabSpell->GetFormID());
+        caster->CastSpellImmediate(grabSpell, false, target, 1.0f, false, 0.0f, player);
     });
 }
