@@ -323,6 +323,7 @@ void DragHandler::UpdateGrabState()
 
     if (state == State::None && player->IsGrabbing()) {
         auto grabbedRef = player->GetGrabbedRef();
+        SKSE::log::info("UpdateGrabState: IsGrabbing=true, grabbedRef={}", grabbedRef ? "yes" : "null");
         if (grabbedRef) {
             grabbedActor = grabbedRef->As<RE::Actor>();
             if (grabbedActor) {
@@ -394,6 +395,7 @@ void DragHandler::OnKeyDown(uint32_t a_key, const char* a_userEvent)
         actionKeyTime = std::chrono::steady_clock::now();
         SKSE::log::info("Action key down (0x{:02X}), charging throw", a_key);
     } else if (a_key == actionKey && state == State::None && bEnableGKeyGrab) {
+        SKSE::log::info("G-key grab: calling TryGrabWithSpell");
         TryGrabWithSpell();
     }
 }
@@ -546,5 +548,6 @@ void DragHandler::TryGrabWithSpell()
         if (!caster) return;
 
         caster->CastSpellImmediate(grabSpell, false, player, 1.0f, false, 0.0f, player);
+    SKSE::log::info("CastSpellImmediate called: spell={:08X}, target=player (self-delivery)", grabSpell->GetFormID());
     });
 }
