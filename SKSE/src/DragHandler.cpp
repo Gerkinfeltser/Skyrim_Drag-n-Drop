@@ -141,6 +141,7 @@ bool DragHandler::LoadSettings()
     ragdollMaxVelocity = GetINIFloat(iniPath, "Impact", "fRagdollMaxVelocity", 20.0f);
     impactForceSpeedScale = GetINIFloat(iniPath, "Impact", "fImpactForceSpeedScale", 1.0f);
     impactDamageSpeedScale = GetINIFloat(iniPath, "Impact", "fImpactDamageSpeedScale", 1.0f);
+    dropOnPlayerHit = GetINIBool(iniPath, "General", "bDropOnPlayerHit", true);
 
     SKSE::log::info("Settings: enabled={}, range={:.0f}, holdDist={:.0f}, followers={}, children={}, anyone={}, hostile={}",
         enabled, grabRange, grabHoldDist, grabFollowers, grabChildren, grabAnyone, grabHostile);
@@ -171,6 +172,12 @@ void DragHandler::OnDataLoad()
     if (player && grabSpell) {
         player->AddSpell(grabSpell);
         SKSE::log::info("Added grab spell to player via AddSpell");
+    }
+
+    auto holder = RE::ScriptEventSourceHolder::GetSingleton();
+    if (holder) {
+        holder->AddEventSink<RE::TESHitEvent>(this);
+        SKSE::log::info("Registered hit event sink");
     }
 }
 
@@ -394,6 +401,28 @@ void DragHandler::ForceRagdoll(RE::Actor* a_actor)
         });
         SKSE::log::info("  Set {} bodies to kDynamic", bodyCount);
     }
+}
+
+RE::BSEventNotifyControl DragHandler::ProcessEvent(const RE::TESHitEvent* a_event, RE::BSTEventSource<RE::TESHitEvent>*)
+{
+    if (!a_event || !a_event->target || !dropOnPlayerHit) return RE::BSEventNotifyControl::kContinue;
+
+    auto player = RE::PlayerCharacter::GetSingleton();
+    if (!player || a_event->target.get() != player) return RE::BSEventNotifyControl::kContinue;
+
+    if (state == State::Dragging && grabbedActor) {
+        SKSE::log::info("Player hit while dragging, dropping NPC");
+        auto formID = grabbedActor->GetFormID();
+        SKSE::GetTaskInterface()->AddTask([this, formID]() {
+            if (state != State::Dragging) return;
+            auto actor = RE::TESForm::LookupByID(formID)->As<RE::Actor>();
+            if (actor && grabbedActor == actor) {
+                ReleaseNPC(false, 0.0f);
+            }
+        });
+    }
+
+    return RE::BSEventNotifyControl::kContinue;
 }
 
 void DragHandler::UpdateGrabState()

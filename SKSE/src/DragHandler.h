@@ -7,7 +7,7 @@
 #include "RE/Skyrim.h"
 #include "SKSE/SKSE.h"
 
-class DragHandler
+class DragHandler : public RE::BSTEventSink<RE::TESHitEvent>
 {
 public:
     static DragHandler* GetSingleton()
@@ -29,6 +29,8 @@ public:
     bool IsValidTarget(RE::Actor* a_actor) const;
     RE::Actor* GetCrosshairActor() const;
     void TryGrabWithSpell();
+
+    RE::BSEventNotifyControl ProcessEvent(const RE::TESHitEvent* a_event, RE::BSTEventSource<RE::TESHitEvent>*) override;
 
     enum class State
     {
@@ -102,4 +104,5 @@ private:
     float ragdollMaxVelocity{ 20.0f };
     float impactForceSpeedScale{ 1.0f };
     float impactDamageSpeedScale{ 1.0f };
+    bool dropOnPlayerHit{ true };
 };
