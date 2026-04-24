@@ -149,11 +149,11 @@ Even bypassing the original Update doesn't stop the jitter. Possible reasons:
 
 ## Current State
 
-All 15 attempts to fix G-key jitter have failed. The root cause is NOT the GrabActor effect's Update alternation — StartGrabObject creates springs without that effect and they still jitter. The oscillation originates in the native grab system.
+**SOLVED in v0.1.53-alpha.** The jitter was NOT caused by the GrabActor effect's Update alternation. The fix was: `CastSpellImmediate(grabSpell, false, player, ...)` — pass `target=player` instead of `target=NPC`. With delivery=Self on the spell, the effect fires on the player, and the engine uses the C++-set `grabbedObject` for the actual grab target. Smooth drag, no jitter.
 
-**Option B (manual spring creation) is the correct solution.** Bypass both CastSpellImmediate and StartGrabObject by creating the `bhkMouseSpringAction` spring manually with correct parameters. Requires IDA/x64dbg to find the constructor signature.
+The 15 attempts above were all trying to fix the symptom (mousePos alternation) while the real fix was simply changing the `target` argument in `CastSpellImmediate`.
 
-**Short-term workaround:** Use power-menu grab (Z + spell) for smooth dragging. G-key remains experimental/jittery.
+**Key finding:** `CastSpellImmediate` 3rd arg (`target`) overrides the spell's delivery setting. Passing `target=NPC` with delivery=Self causes the GrabActor effect to fire on the NPC → dual grab conflict → jitter. Passing `target=player` makes the effect fire on the player, engine uses `grabbedObject` → smooth.
 
 ---
 
