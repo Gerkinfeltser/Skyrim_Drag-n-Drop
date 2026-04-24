@@ -402,7 +402,6 @@ void DragHandler::OnKeyDown(uint32_t a_key, const char* a_userEvent)
         actionKeyTime = std::chrono::steady_clock::now();
         SKSE::log::info("Action key down (0x{:02X}), charging throw", a_key);
     } else if (a_key == actionKey && state == State::None && bEnableGKeyGrab) {
-        SKSE::log::info("G-key grab: calling TryGrabWithSpell");
         TryGrabWithSpell();
     }
 }
@@ -550,7 +549,11 @@ SKSE::GetTaskInterface()->AddTask([this, targetFormID, holdDist]() {
             target->GetFormID(), paralysis, target->IsInRagdollState(), target->IsDead());
 
         if (paralysis > 0.0f && ragdollSpell) {
-            SKSE::log::info("  Target paralyzed ({:.1f}), casting ragdoll spell first", paralysis);
+            SKSE::log::info("  Target paralyzed ({:.1f}), dispelling paralysis effects then casting ragdoll spell", paralysis);
+            target->AsMagicTarget()->DispelEffectsWithArchetype(RE::EffectArchetype::kParalysis, true);
+            target->AsActorValueOwner()->SetActorValue(RE::ActorValue::kParalysis, 0.0f);
+            SKSE::log::info("  After dispel: paralysis={:.1f}", target->AsActorValueOwner()->GetActorValue(RE::ActorValue::kParalysis));
+
             auto caster = player->GetMagicCaster(RE::MagicSystem::CastingSource::kRightHand);
             if (caster) {
                 caster->CastSpellImmediate(ragdollSpell, false, target, 1.0f, false, 0.0f, nullptr);
