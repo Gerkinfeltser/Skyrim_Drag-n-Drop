@@ -121,6 +121,7 @@ bool DragHandler::LoadSettings()
     impactDamageThrownMult = GetINIFloat(iniPath, "Impact", "fImpactDamageThrownMult", 1.0f);
     impactOnDrop = GetINIBool(iniPath, "Impact", "bImpactOnDrop", false);
     swingImpactRadiusMult = GetINIFloat(iniPath, "Impact", "fSwingImpactRadiusMult", 0.5f);
+    swingImpactCooldown = GetINIFloat(iniPath, "Impact", "fSwingImpactCooldown", 0.5f);
 
     SKSE::log::info("Settings: enabled={}, range={:.0f}, holdDist={:.0f}, followers={}, children={}, anyone={}, hostile={}",
         enabled, grabRange, grabHoldDist, grabFollowers, grabChildren, grabAnyone, grabHostile);
