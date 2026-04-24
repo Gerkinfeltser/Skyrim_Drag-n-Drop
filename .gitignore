@@ -3,9 +3,6 @@ SKSE/build/
 SKSE/vcpkg_installed/
 build/
 
-# Compiled Papyrus (generated from Source/Scripts)
-scripts/*.pex
-
 # IDE
 .vs/
 .vscode/

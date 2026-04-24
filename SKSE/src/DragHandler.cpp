@@ -538,7 +538,24 @@ void DragHandler::TryGrabWithSpell()
         auto target = RE::TESForm::LookupByID(targetFormID)->As<RE::Actor>();
         if (!target) return;
 
+float paralysis = target->AsActorValueOwner()->GetActorValue(RE::ActorValue::kParalysis);
+        SKSE::log::info("TryGrabWithSpell: target={:08X} paralysis={:.1f} ragdollState={} dead={} isGhost={}",
+            target->GetFormID(), paralysis, target->IsInRagdollState(), target->IsDead(), target->IsGhost());
+
+        SKSE::log::info("  ActorValues: Health={:.1f} Magicka={:.1f} Stamina={:.1f} Aggression={:.1f} Confidence={:.1f}",
+            target->AsActorValueOwner()->GetActorValue(RE::ActorValue::kHealth),
+            target->AsActorValueOwner()->GetActorValue(RE::ActorValue::kMagicka),
+            target->AsActorValueOwner()->GetActorValue(RE::ActorValue::kStamina),
+            target->AsActorValueOwner()->GetActorValue(RE::ActorValue::kAggression),
+            target->AsActorValueOwner()->GetActorValue(RE::ActorValue::kConfidence));
+
+        SKSE::log::info("  State: isRunning={} isSneaking={} isOnMount={}",
+            target->IsRunning(), target->IsSneaking(), target->IsOnMount());
+
         target->AsActorValueOwner()->SetActorValue(RE::ActorValue::kParalysis, 0.0f);
+
+        float paralysisAfter = target->AsActorValueOwner()->GetActorValue(RE::ActorValue::kParalysis);
+        SKSE::log::info("TryGrabWithSpell: paralysis after clear={:.1f}", paralysisAfter);
 
         player->GetPlayerRuntimeData().grabObjectWeight = 0.0f;
         player->GetPlayerRuntimeData().grabDistance = holdDist;
