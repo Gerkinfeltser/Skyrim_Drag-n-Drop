@@ -98,4 +98,6 @@ private:
     std::unordered_map<RE::FormID, std::chrono::steady_clock::time_point> swingCooldowns;
     float swingImpactCooldown{ 1.0f };
     float swingImpactRadiusMult{ 0.5f };
+    bool swingImpactStatics{ true };
+    float ragdollMaxVelocity{ 20.0f };
 };

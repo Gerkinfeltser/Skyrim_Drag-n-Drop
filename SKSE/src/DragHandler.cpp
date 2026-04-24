@@ -59,6 +59,21 @@ namespace
     constexpr RE::FormID GHOST_KEYWORD{ 0xD205E };
     constexpr RE::FormID IMMUNE_PARALYSIS_KEYWORD{ 0xF23C5 };
 
+    void ApplyClampedImpulse(RE::hkpRigidBody* body, const RE::hkVector4& impulse, float maxVel)
+    {
+        body->motion.ApplyLinearImpulse(impulse);
+        auto& vel = body->motion.linearVelocity;
+        float speed = std::sqrt(vel.quad.m128_f32[0] * vel.quad.m128_f32[0] +
+                                vel.quad.m128_f32[1] * vel.quad.m128_f32[1] +
+                                vel.quad.m128_f32[2] * vel.quad.m128_f32[2]);
+        if (speed > maxVel && speed > 0.001f) {
+            float scale = maxVel / speed;
+            vel.quad.m128_f32[0] *= scale;
+            vel.quad.m128_f32[1] *= scale;
+            vel.quad.m128_f32[2] *= scale;
+        }
+    }
+
     RE::BGSKeyword* GetKeyword(RE::FormID a_formID)
     {
         auto factory = RE::TESForm::LookupByID(a_formID);
@@ -120,8 +135,10 @@ bool DragHandler::LoadSettings()
     impactDamage = GetINIFloat(iniPath, "Impact", "fImpactDamage", 0.0f);
     impactDamageThrownMult = GetINIFloat(iniPath, "Impact", "fImpactDamageThrownMult", 1.0f);
     impactOnDrop = GetINIBool(iniPath, "Impact", "bImpactOnDrop", false);
-    swingImpactRadiusMult = GetINIFloat(iniPath, "Impact", "fSwingImpactRadiusMult", 0.5f);
     swingImpactCooldown = GetINIFloat(iniPath, "Impact", "fSwingImpactCooldown", 0.5f);
+    swingImpactRadiusMult = GetINIFloat(iniPath, "Impact", "fSwingImpactRadiusMult", 0.5f);
+    swingImpactStatics = GetINIBool(iniPath, "Impact", "bSwingImpactStatics", true);
+    ragdollMaxVelocity = GetINIFloat(iniPath, "Impact", "fRagdollMaxVelocity", 20.0f);
 
     SKSE::log::info("Settings: enabled={}, range={:.0f}, holdDist={:.0f}, followers={}, children={}, anyone={}, hostile={}",
         enabled, grabRange, grabHoldDist, grabFollowers, grabChildren, grabAnyone, grabHostile);
@@ -527,7 +544,7 @@ void DragHandler::UpdateGrabState()
                             for (auto* body : allBodies) {
                                 if (body) {
                                     float mass = body->motion.GetMass();
-                                    if (mass > 0.001f) body->motion.ApplyLinearImpulse(impulseHK * mass);
+                                    if (mass > 0.001f) ApplyClampedImpulse(body, impulseHK * mass, ragdollMaxVelocity);
                                 }
                             }
                         }
@@ -546,7 +563,7 @@ void DragHandler::UpdateGrabState()
                         grabbedActor->AsActorValueOwner()->RestoreActorValue(RE::ACTOR_VALUE_MODIFIER::kDamage, RE::ActorValue::kHealth, -thrownDmg);
                     }
                 }
-            } else {
+            } else if (swingImpactStatics) {
                 auto root = a_ref.Get3D();
                 if (!root) return RE::BSContainer::ForEachResult::kContinue;
 
@@ -579,7 +596,7 @@ void DragHandler::UpdateGrabState()
                         RE::BSWriteLockGuard locker(bhkWorld->worldLock);
                         for (auto* body : bodies) {
                             float mass = body->motion.GetMass();
-                            if (mass > 0.001f) body->motion.ApplyLinearImpulse(impulseHK * mass);
+                            if (mass > 0.001f) ApplyClampedImpulse(body, impulseHK * mass, ragdollMaxVelocity);
                         }
                     }
                 }
@@ -693,7 +710,7 @@ void DragHandler::UpdateGrabState()
                                 if (body) {
                                     float mass = body->motion.GetMass();
                                     if (mass > 0.001f) {
-                                        body->motion.ApplyLinearImpulse(impulseHK * mass);
+                                        ApplyClampedImpulse(body, impulseHK * mass, ragdollMaxVelocity);
                                     }
                                 }
                             }
