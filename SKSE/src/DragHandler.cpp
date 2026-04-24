@@ -279,6 +279,8 @@ void DragHandler::ForceRagdoll(RE::Actor* a_actor)
     SKSE::log::info("ForceRagdoll: {:08X} (dead={}, ragdollState={})",
         a_actor->GetFormID(), a_actor->IsDead(), a_actor->IsInRagdollState());
 
+    a_actor->NotifyAnimationGraph("ragdoll");
+
     RE::BSTSmartPointer<RE::BSAnimationGraphManager> graphManager;
     if (a_actor->GetAnimationGraphManager(graphManager) && graphManager) {
         for (auto& graphPtr : graphManager->graphs) {
