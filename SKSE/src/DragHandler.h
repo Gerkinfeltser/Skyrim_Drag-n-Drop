@@ -97,4 +97,5 @@ private:
     std::unordered_set<RE::FormID> impactHitActors;
     std::unordered_map<RE::FormID, std::chrono::steady_clock::time_point> swingCooldowns;
     float swingImpactCooldown{ 1.0f };
+    float swingImpactRadiusMult{ 0.5f };
 };

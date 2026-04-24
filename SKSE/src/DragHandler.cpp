@@ -120,6 +120,7 @@ bool DragHandler::LoadSettings()
     impactDamage = GetINIFloat(iniPath, "Impact", "fImpactDamage", 0.0f);
     impactDamageThrownMult = GetINIFloat(iniPath, "Impact", "fImpactDamageThrownMult", 1.0f);
     impactOnDrop = GetINIBool(iniPath, "Impact", "bImpactOnDrop", false);
+    swingImpactRadiusMult = GetINIFloat(iniPath, "Impact", "fSwingImpactRadiusMult", 0.5f);
 
     SKSE::log::info("Settings: enabled={}, range={:.0f}, holdDist={:.0f}, followers={}, children={}, anyone={}, hostile={}",
         enabled, grabRange, grabHoldDist, grabFollowers, grabChildren, grabAnyone, grabHostile);
@@ -476,10 +477,13 @@ void DragHandler::UpdateGrabState()
 
         if (springSpeed < impactMinVelocity) return;
 
+        if (swingImpactRadiusMult <= 0.0f) return;
+        float swingRadius = impactRadius * swingImpactRadiusMult;
+
         auto cell = player->GetParentCell();
         if (!cell) return;
 
-        cell->ForEachReferenceInRange(thrownPos, impactRadius, [&](RE::TESObjectREFR& a_ref) {
+        cell->ForEachReferenceInRange(thrownPos, swingRadius, [&](RE::TESObjectREFR& a_ref) {
             if (a_ref.GetFormID() == player->GetFormID()) return RE::BSContainer::ForEachResult::kContinue;
             if (grabbedActor && a_ref.GetFormID() == grabbedActor->GetFormID()) return RE::BSContainer::ForEachResult::kContinue;
 
@@ -491,7 +495,7 @@ void DragHandler::UpdateGrabState()
                 refPos.z = ref3D->world.translate.z;
             }
             float dist = std::sqrt(thrownPos.GetSquaredDistance(refPos));
-            if (dist > impactRadius) return RE::BSContainer::ForEachResult::kContinue;
+            if (dist > swingRadius) return RE::BSContainer::ForEachResult::kContinue;
 
             auto cdIt = swingCooldowns.find(a_ref.GetFormID());
             if (cdIt != swingCooldowns.end()) {
