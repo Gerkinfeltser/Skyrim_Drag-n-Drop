@@ -110,7 +110,8 @@ C:\Users\vector\Documents\My Games\Skyrim.INI\SKSE\DragAndDrop.log
 
 ## Not Yet Implemented
 
-- **G-key grab jitter — VMT hook tried (attempt #14, FAILED).** Hook fires and fixes near-zero mousePos, but Havok reads the bad value before fix applies. Effect's alternating write is internal — same effect instance alternates correct/near-zero every Update call. **Option B (manual spring creation) is the recommended path forward.**
+- **G-key grab jitter (15 attempts, FAILED).** Root cause: oscillation originates in native grab system, not GrabActor effect's Update. StartGrabObject also produces jittery springs. **Option B (manual spring creation) is the recommended path forward.**
+- **Power menu cast bypasses IsValidTarget.** Hooked `CastSpellImmediate` on all 6 vtables (MagicCaster, ActorMagicCaster[3], NonActorMagicCaster[2]) — G-key cast fires hook correctly, but power menu uses `Actor::CastSpell` directly and doesn't use `CastSpellImmediate` at all. **Power menu = dev mode** (always casts, no INI gate). G-key respects all INI settings.
 - Stamina drain while dragging (stub exists, not wired to frame tick)
 - Force ragdoll on stiff/standing dead NPCs (ForceRagdoll exists but causes issues when called at grab time)
 - Throw damage/stagger to other NPCs on hit
