@@ -10,7 +10,8 @@ Flags:
 - Recover
 - Painless
 Archetype:
-  MutagenObjectType: MagicEffectLightArchetype
+  MutagenObjectType: MagicEffectArchetype
+  Type: Script
 CastType: FireAndForget
 DualCastScale: 1
 CastingSoundLevel: Silent
