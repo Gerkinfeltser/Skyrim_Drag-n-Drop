@@ -82,6 +82,7 @@ private:
     float grabHoldTimeout{ 0.5f };
     bool blockTwoHanded{ true };
     bool blockUnsheathed{ false };
+    bool chargeThrowOnHold{ false };
     RE::FormID grabFailSoundForm{ 0 };
     RE::FormID grabSoundForm{ 0 };
     RE::FormID throwSoundForm{ 0 };

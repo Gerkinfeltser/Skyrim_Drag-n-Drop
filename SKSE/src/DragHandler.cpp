@@ -182,6 +182,7 @@ bool DragHandler::LoadSettings()
     grabHoldTimeout = GetINIFloat(iniPath, "General", "fGrabHoldTimeout", 0.5f);
     blockTwoHanded = GetINIBool(iniPath, "General", "bBlockTwoHanded", true);
     blockUnsheathed = GetINIBool(iniPath, "General", "bBlockUnsheathed", false);
+    chargeThrowOnHold = GetINIBool(iniPath, "General", "bChargeThrowOnHold", false);
     enableLogging = GetINIBool(iniPath, "General", "bEnableLogging", false);
 
     throwImpulseMax = GetINIFloat(iniPath, "Throw", "fThrowImpulseMax", 10.0f);
@@ -977,8 +978,15 @@ void DragHandler::OnKeyUp(uint32_t a_key, const char* a_userEvent)
         auto now = std::chrono::steady_clock::now();
         float heldDuration = std::chrono::duration<float>(now - grabKeyTime).count();
         if (heldDuration >= grabHoldTimeout) {
-            SKSE::log::info("G-key held {:.2f}s (>= {:.2f}s timeout), dropping", heldDuration, grabHoldTimeout);
-            DoRelease(0.0f);
+            if (chargeThrowOnHold) {
+                actionKeyHeld = true;
+                actionKeyTime = grabKeyTime;
+                actionNotified = false;
+                SKSE::log::info("G-key held {:.2f}s, transitioning to throw charge", heldDuration);
+            } else {
+                SKSE::log::info("G-key held {:.2f}s (>= {:.2f}s timeout), dropping", heldDuration, grabHoldTimeout);
+                DoRelease(0.0f);
+            }
         }
         return;
     }
