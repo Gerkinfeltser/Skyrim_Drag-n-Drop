@@ -119,6 +119,8 @@ private:
     float impactForceSpeedScale{ 1.0f };
     float impactDamageSpeedScale{ 1.0f };
     bool dropOnPlayerHit{ true };
+    float dropOnHitChance{ 100.0f };
+    float dropOnProjectileChance{ 100.0f };
     bool noSprint{ true };
     bool showNotifications{ true };
     float springDamping{ 1.5f };

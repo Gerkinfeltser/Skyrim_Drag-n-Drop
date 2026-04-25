@@ -181,6 +181,8 @@ bool DragHandler::LoadSettings()
     impactForceSpeedScale = GetINIFloat(iniPath, "Impact", "fImpactForceSpeedScale", 1.0f);
     impactDamageSpeedScale = GetINIFloat(iniPath, "Impact", "fImpactDamageSpeedScale", 1.0f);
     dropOnPlayerHit = GetINIBool(iniPath, "General", "bDropOnPlayerHit", true);
+    dropOnHitChance = GetINIFloat(iniPath, "General", "fDropOnHitChance", 100.0f);
+    dropOnProjectileChance = GetINIFloat(iniPath, "General", "fDropOnProjectileChance", 100.0f);
     noSprint = GetINIBool(iniPath, "General", "bNoSprintWhileDragging", true);
     showNotifications = GetINIBool(iniPath, "General", "bShowNotifications", true);
     springDamping = GetINIFloat(iniPath, "General", "fSpringDamping", 1.5f);
@@ -497,7 +499,14 @@ RE::BSEventNotifyControl DragHandler::ProcessEvent(const RE::TESHitEvent* a_even
     if (!player || a_event->target.get()->GetFormID() != player->GetFormID()) return RE::BSEventNotifyControl::kContinue;
 
     if (state == State::Dragging && grabbedActor) {
-        SKSE::log::info("Player hit while dragging, capturing velocity and scheduling drop");
+        bool isProjectile = a_event->projectile != 0;
+        float chance = isProjectile ? dropOnProjectileChance : dropOnHitChance;
+        float roll = static_cast<float>(std::rand()) / (static_cast<float>(RAND_MAX) / 100.0f);
+        if (roll >= chance) {
+            SKSE::log::info("Player hit while dragging, chance roll {:.1f} >= {:.1f} ({}) — no drop", roll, chance, isProjectile ? "projectile" : "melee");
+            return RE::BSEventNotifyControl::kContinue;
+        }
+        SKSE::log::info("Player hit while dragging, chance roll {:.1f} < {:.1f} ({}) — dropping", roll, chance, isProjectile ? "projectile" : "melee");
 
         RE::hkVector4 springBodyVel;
         bool hasSpringVel = false;
