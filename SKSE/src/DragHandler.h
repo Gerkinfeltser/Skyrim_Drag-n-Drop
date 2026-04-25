@@ -60,7 +60,9 @@ private:
 
     bool actionKeyHeld{ false };
     bool actionNotified{ false };
+    bool grabKeyHeld{ false };
     std::chrono::steady_clock::time_point actionKeyTime;
+    std::chrono::steady_clock::time_point grabKeyTime;
 
     uint32_t actionKey{ 0x22 };
     bool enabled{ true };
@@ -75,6 +77,7 @@ private:
     float savedSpeedMult{ 0.0f };
     bool useShoutKeyForRelease{ true };
     bool bEnableGKeyGrab{ true };
+    float grabHoldTimeout{ 0.5f };
 
     float throwImpulseMax{ 10.0f };
     float throwDropWindow{ 0.5f };

@@ -121,6 +121,8 @@ bool DragHandler::LoadSettings()
     noSpeedPenalty = GetINIBool(iniPath, "General", "bNoSpeedPenalty", true);
     actionKey = static_cast<uint32_t>(GetINIInt(iniPath, "General", "iActionKey", 0x22));
     useShoutKeyForRelease = GetINIBool(iniPath, "General", "bUseShoutKeyForRelease", true);
+    bEnableGKeyGrab = GetINIBool(iniPath, "General", "bEnableGKeyGrab", true);
+    grabHoldTimeout = GetINIFloat(iniPath, "General", "fGrabHoldTimeout", 0.5f);
 
     throwImpulseMax = GetINIFloat(iniPath, "Throw", "fThrowImpulseMax", 10.0f);
     throwDropWindow = GetINIFloat(iniPath, "Throw", "fThrowDropWindow", 0.5f);
@@ -928,22 +930,41 @@ void DragHandler::OnKeyDown(uint32_t a_key, const char* a_userEvent)
         return;
     }
 
-    if (a_key == actionKey && state == State::Dragging && !actionKeyHeld) {
+    if (a_key != actionKey) return;
+
+    if (state == State::None && bEnableGKeyGrab) {
+        grabKeyHeld = true;
+        grabKeyTime = std::chrono::steady_clock::now();
+        SKSE::log::info("G-key down: calling TryGrabWithSpell");
+        TryGrabWithSpell();
+    } else if (state == State::Dragging && !actionKeyHeld) {
         actionKeyHeld = true;
         actionKeyTime = std::chrono::steady_clock::now();
         SKSE::log::info("Action key down (0x{:02X}), charging throw", a_key);
-    } else if (a_key == actionKey && state == State::None && bEnableGKeyGrab) {
-        SKSE::log::info("G-key grab: calling TryGrabWithSpell");
-        TryGrabWithSpell();
     }
 }
 
 void DragHandler::OnKeyUp(uint32_t a_key, const char* a_userEvent)
 {
     bool isShoutUp = useShoutKeyForRelease && (strcmp(a_userEvent, "Shout") == 0) && spellCastDetected;
-    bool isActionUp = (a_key == actionKey) && actionKeyHeld;
+    bool isActionUp = (a_key == actionKey);
 
     if (!isShoutUp && !isActionUp) return;
+
+    if (isActionUp && grabKeyHeld && state == State::Dragging) {
+        grabKeyHeld = false;
+        auto now = std::chrono::steady_clock::now();
+        float heldDuration = std::chrono::duration<float>(now - grabKeyTime).count();
+        if (heldDuration >= grabHoldTimeout) {
+            SKSE::log::info("G-key held {:.2f}s (>= {:.2f}s timeout), dropping", heldDuration, grabHoldTimeout);
+            DoRelease(0.0f);
+        }
+        return;
+    }
+
+    if (isActionUp) grabKeyHeld = false;
+
+    if (!isShoutUp && !(isActionUp && actionKeyHeld)) return;
     if (state != State::Dragging) return;
 
     auto now = std::chrono::steady_clock::now();
