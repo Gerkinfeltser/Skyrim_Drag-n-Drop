@@ -3,6 +3,7 @@
 
 #include <cstdlib>
 #include <cstdio>
+#include <ctime>
 #include <string>
 #include <vector>
 #include <windows.h>
@@ -100,7 +101,6 @@ namespace
             return RE::BSVisit::BSVisitControl::kContinue;
         });
 
-        SKSE::log::info("Collected {} rigid bodies from actor scene graph", bodies.size());
         return bodies;
     }
     void PlaySoundForm(RE::FormID a_formID)
@@ -136,6 +136,7 @@ namespace
 bool DragHandler::LoadSettings()
 {
     auto iniPath = GetINIPath();
+    std::srand(static_cast<unsigned int>(std::time(nullptr)));
     SKSE::log::info("Loading settings from: {}", iniPath);
 
     enabled = GetINIBool(iniPath, "General", "bEnableMod", true);
@@ -198,6 +199,8 @@ bool DragHandler::LoadSettings()
         staminaDrainRate, dragSpeedMult, noSpeedPenalty, actionKey, useShoutKeyForRelease);
     SKSE::log::info("  sounds: grabFail=0x{:08X}, throw=0x{:08X}, drop=0x{:08X}",
         grabFailSoundForm, throwSoundForm, dropSoundForm);
+    SKSE::log::info("  drop: hitChance={:.1f}, projectileChance={:.1f}",
+        dropOnHitChance, dropOnProjectileChance);
 
     return true;
 }
@@ -209,8 +212,8 @@ void DragHandler::OnDataLoad()
         grabSpell = dataHandler->LookupForm<RE::SpellItem>(0x800, "DragAndDrop.esp");
         SKSE::log::info("Data loaded, grab spell: {:p}", (void*)grabSpell);
 
-        impactCloakSpell = dataHandler->LookupForm<RE::SpellItem>(0x808, "DragAndDrop.esp");
-        SKSE::log::info("Data loaded, impact spell: {:p}", (void*)impactCloakSpell);
+        impactPushSpell = dataHandler->LookupForm<RE::SpellItem>(0x808, "DragAndDrop.esp");
+        SKSE::log::info("Data loaded, impact spell: {:p}", (void*)impactPushSpell);
     } else {
         SKSE::log::warn("Data loaded, TESDataHandler not available");
     }
@@ -318,21 +321,6 @@ void DragHandler::ApplySpeedBoost(RE::PlayerCharacter* a_player)
     SKSE::log::info("Speed boost applied: saved={:.1f}, boosted={:.1f}", savedSpeedMult, savedSpeedMult * dragSpeedMult);
 }
 
-void DragHandler::RestoreCollisionFilters()
-{
-    if (savedCollisionInfo.empty()) return;
-    auto player = RE::PlayerCharacter::GetSingleton();
-    if (!player) return;
-    auto cell = player->GetParentCell();
-    auto bhkWorld = cell ? cell->GetbhkWorld() : nullptr;
-    if (!bhkWorld) return;
-    RE::BSWriteLockGuard locker(bhkWorld->worldLock);
-    for (auto& [body, info] : savedCollisionInfo) {
-        if (body) body->collidable.broadPhaseHandle.collisionFilterInfo = info;
-    }
-    savedCollisionInfo.clear();
-}
-
 void DragHandler::RestoreSpeed(RE::PlayerCharacter* a_player)
 {
     if (!noSpeedPenalty || !a_player) return;
@@ -360,36 +348,6 @@ RE::hkVector4 DragHandler::GetImpulse(float a_force, float a_mass) const
     float z = matrix.entry[2][1] * a_force;
 
     return RE::hkVector4(x, y, z, 0) * a_mass;
-}
-
-void DragHandler::ZeroGrabbedVelocity(RE::PlayerCharacter* a_player)
-{
-    if (!a_player) return;
-
-    auto cell = a_player->GetParentCell();
-    auto bhkWorld = cell ? cell->GetbhkWorld() : nullptr;
-    if (!bhkWorld) return;
-
-    RE::BSWriteLockGuard locker(bhkWorld->worldLock);
-
-    auto& grabSpring = a_player->GetPlayerRuntimeData().grabSpring;
-    for (auto& springRef : grabSpring) {
-        if (!springRef) continue;
-
-        auto bhkObj = reinterpret_cast<RE::bhkRefObject*>(springRef.get());
-        if (!bhkObj || !bhkObj->referencedObject) continue;
-
-        auto actionBase = reinterpret_cast<std::uintptr_t>(bhkObj->referencedObject.get());
-        auto entityPtr = *reinterpret_cast<RE::hkpEntity**>(actionBase + 0x30);
-        if (!entityPtr) continue;
-
-        // Zero the spring's own force at offset 0x48 so it stops pulling
-        *reinterpret_cast<float*>(actionBase + 0x48) = 0.0f;
-
-        auto hkpRigidBody = reinterpret_cast<RE::hkpRigidBody*>(entityPtr);
-        hkpRigidBody->motion.SetLinearVelocity(RE::hkVector4());
-        hkpRigidBody->motion.SetAngularVelocity(RE::hkVector4());
-    }
 }
 
 void DragHandler::ThrowGrabbedObject(float a_heldDuration)
@@ -445,50 +403,6 @@ void DragHandler::ThrowGrabbedObject(float a_heldDuration)
 
         SKSE::log::info("Throw: delayed zero + impulse on all {} bodies, force={:.1f}", capturedBodies.size(), capturedForce);
     });
-}
-
-void DragHandler::ForceRagdoll(RE::Actor* a_actor)
-{
-    if (!a_actor) return;
-
-    SKSE::log::info("ForceRagdoll: {:08X} (dead={}, ragdollState={})",
-        a_actor->GetFormID(), a_actor->IsDead(), a_actor->IsInRagdollState());
-
-    a_actor->NotifyAnimationGraph("ragdoll");
-
-    RE::BSTSmartPointer<RE::BSAnimationGraphManager> graphManager;
-    if (a_actor->GetAnimationGraphManager(graphManager) && graphManager) {
-        for (auto& graphPtr : graphManager->graphs) {
-            if (!graphPtr) continue;
-            auto* driver = static_cast<RE::BSIRagdollDriver*>(graphPtr.get());
-            if (driver && driver->HasRagdoll()) {
-                driver->AddRagdollToWorld();
-                driver->SetMotionType(RE::hkpMotion::MotionType::kDynamic);
-                SKSE::log::info("  Ragdoll driver: added to world, motion=dynamic");
-            }
-        }
-    }
-
-    auto root = a_actor->Get3D();
-    if (root) {
-        root->UpdateRigidConstraints(true);
-
-        int bodyCount = 0;
-        RE::BSVisit::TraverseScenegraphCollision(root, [&](RE::bhkNiCollisionObject* a_colObj) {
-            if (!a_colObj) return RE::BSVisit::BSVisitControl::kContinue;
-            auto colObj = static_cast<RE::bhkCollisionObject*>(a_colObj);
-            auto rigidBody = colObj->GetRigidBody();
-            if (rigidBody && rigidBody->referencedObject) {
-                auto hkpBody = reinterpret_cast<RE::hkpRigidBody*>(rigidBody->referencedObject.get());
-                if (hkpBody) {
-                    hkpBody->motion.type = RE::hkpMotion::MotionType::kDynamic;
-                    bodyCount++;
-                }
-            }
-            return RE::BSVisit::BSVisitControl::kContinue;
-        });
-        SKSE::log::info("  Set {} bodies to kDynamic", bodyCount);
-    }
 }
 
 RE::BSEventNotifyControl DragHandler::ProcessEvent(const RE::TESHitEvent* a_event, RE::BSTEventSource<RE::TESHitEvent>*)
@@ -672,7 +586,6 @@ void DragHandler::UpdateGrabState()
     }
 
     if (state == State::Dragging && !player->IsGrabbing()) {
-        RestoreCollisionFilters();
         RestoreSpeed(player);
         grabbedActor = nullptr;
         state = State::None;
@@ -834,8 +747,8 @@ void DragHandler::UpdateGrabState()
                     }
                 } else {
                     auto caster = player->GetMagicCaster(RE::MagicSystem::CastingSource::kInstant);
-                    if (caster && impactCloakSpell) {
-                        caster->CastSpellImmediate(impactCloakSpell, false, actor, 1.0f, false, 0.0f, nullptr);
+                    if (caster && impactPushSpell) {
+                        caster->CastSpellImmediate(impactPushSpell, false, actor, 1.0f, false, 0.0f, nullptr);
                     }
                 }
 
@@ -1013,10 +926,10 @@ void DragHandler::UpdateGrabState()
                 } else {
                     SKSE::log::info("  Standing actor hit, casting PushActorAway spell");
                     auto player = RE::PlayerCharacter::GetSingleton();
-                    if (player && impactCloakSpell) {
+                    if (player && impactPushSpell) {
                         auto caster = player->GetMagicCaster(RE::MagicSystem::CastingSource::kInstant);
                         if (caster) {
-                            caster->CastSpellImmediate(impactCloakSpell, false, &actor, 1.0f, false, 0.0f, nullptr);
+                            caster->CastSpellImmediate(impactPushSpell, false, &actor, 1.0f, false, 0.0f, nullptr);
                         }
                     }
                 }
@@ -1158,7 +1071,6 @@ void DragHandler::DoRelease(float a_heldDuration)
         actionKeyHeld = false;
         actionNotified = false;
         spellCastDetected = false;
-        RestoreCollisionFilters();
         RestoreSpeed(player);
         if (showNotifications) RE::DebugNotification("Dropped");
         PlaySoundForm(dropSoundForm);

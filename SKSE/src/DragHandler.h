@@ -43,10 +43,7 @@ public:
 
 private:
     void DrainStamina(float a_dt);
-    void ZeroGrabbedVelocity(RE::PlayerCharacter* a_player);
-    void RestoreCollisionFilters();
     void ThrowGrabbedObject(float a_heldDuration);
-    void ForceRagdoll(RE::Actor* a_actor);
     RE::hkVector4 GetImpulse(float a_force, float a_mass) const;
     float GetForce(float a_heldDuration) const;
     void ApplySpeedBoost(RE::PlayerCharacter* a_player);
@@ -87,12 +84,12 @@ private:
     RE::FormID dropSoundForm{ 0 };
     bool enableLogging{ false };
 
-    float throwImpulseMax{ 10.0f };
-    float throwDropWindow{ 0.5f };
-    float throwTimeToMax{ 4.0f };
+    float throwImpulseMax{ 20.0f };
+    float throwDropWindow{ 0.2f };
+    float throwTimeToMax{ 3.0f };
 
     RE::SpellItem* grabSpell{ nullptr };
-    RE::SpellItem* impactCloakSpell{ nullptr };
+    RE::SpellItem* impactPushSpell{ nullptr };
     bool spellCastDetected{ false };
     std::chrono::steady_clock::time_point spellCastTime;
 
@@ -125,6 +122,5 @@ private:
     bool showNotifications{ true };
     float springDamping{ 1.5f };
     float springElasticity{ 0.05f };
-    float springMaxForce{ 500.0f };
-    std::vector<std::pair<RE::hkpRigidBody*, std::uint32_t>> savedCollisionInfo;
+    float springMaxForce{ 1000.0f };
 };

@@ -3,7 +3,7 @@
 
 namespace
 {
-    constexpr auto VERSION = "0.1.92-alpha";
+    constexpr auto VERSION = "0.1.93-alpha";
     constexpr auto BUILD = __DATE__ " " __TIME__;
 
     void InitializeLog()
@@ -62,18 +62,12 @@ namespace
         return DragHandler::GetSingleton()->IsDragging();
     }
 
-    void Debug(RE::StaticFunctionTag*)
-    {
-        SKSE::log::info("[DragDrop Papyrus] Debug called");
-    }
-
     bool RegisterPapyrusFunctions(RE::BSScript::IVirtualMachine* a_vm)
     {
         a_vm->RegisterFunction("ReleaseNPC", "DragDrop", ReleaseNPC);
         a_vm->RegisterFunction("ThrowNPC", "DragDrop", ThrowNPC);
         a_vm->RegisterFunction("GetGrabbedNPC", "DragDrop", GetGrabbedNPC);
         a_vm->RegisterFunction("IsDragging", "DragDrop", IsDragging);
-        a_vm->RegisterFunction("Debug", "DragDrop", Debug);
         SKSE::log::info("Papyrus functions registered");
         return true;
     }
