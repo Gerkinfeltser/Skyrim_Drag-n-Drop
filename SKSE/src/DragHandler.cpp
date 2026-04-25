@@ -123,6 +123,7 @@ bool DragHandler::LoadSettings()
     useShoutKeyForRelease = GetINIBool(iniPath, "General", "bUseShoutKeyForRelease", true);
     bEnableGKeyGrab = GetINIBool(iniPath, "General", "bEnableGKeyGrab", true);
     grabHoldTimeout = GetINIFloat(iniPath, "General", "fGrabHoldTimeout", 0.5f);
+    blockTwoHanded = GetINIBool(iniPath, "General", "bBlockTwoHanded", true);
 
     throwImpulseMax = GetINIFloat(iniPath, "Throw", "fThrowImpulseMax", 10.0f);
     throwDropWindow = GetINIFloat(iniPath, "Throw", "fThrowDropWindow", 0.5f);
@@ -192,6 +193,27 @@ void DragHandler::OnDataLoad()
 bool DragHandler::IsValidTarget(RE::Actor* a_actor) const
 {
     if (!a_actor || a_actor->IsPlayerRef()) return false;
+
+    if (blockTwoHanded) {
+        auto player = RE::PlayerCharacter::GetSingleton();
+        if (player) {
+            for (bool left : {false, true}) {
+                auto* obj = player->GetEquippedObject(left);
+                if (obj) {
+                    auto* weap = obj->As<RE::TESObjectWEAP>();
+                    if (weap) {
+                        auto type = weap->GetWeaponType();
+                        if (type == RE::WEAPON_TYPE::kTwoHandSword ||
+                            type == RE::WEAPON_TYPE::kTwoHandAxe ||
+                            type == RE::WEAPON_TYPE::kBow ||
+                            type == RE::WEAPON_TYPE::kCrossbow) {
+                            return false;
+                        }
+                    }
+                }
+            }
+        }
+    }
 
     auto ghostKw = GetKeyword(GHOST_KEYWORD);
     auto paraKw = GetKeyword(IMMUNE_PARALYSIS_KEYWORD);

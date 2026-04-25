@@ -78,6 +78,7 @@ private:
     bool useShoutKeyForRelease{ true };
     bool bEnableGKeyGrab{ true };
     float grabHoldTimeout{ 0.5f };
+    bool blockTwoHanded{ true };
 
     float throwImpulseMax{ 10.0f };
     float throwDropWindow{ 0.5f };
