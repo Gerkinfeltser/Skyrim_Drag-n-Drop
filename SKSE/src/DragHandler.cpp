@@ -979,10 +979,8 @@ void DragHandler::OnKeyUp(uint32_t a_key, const char* a_userEvent)
         float heldDuration = std::chrono::duration<float>(now - grabKeyTime).count();
         if (heldDuration >= grabHoldTimeout) {
             if (chargeThrowOnHold) {
-                actionKeyHeld = true;
-                actionKeyTime = grabKeyTime;
-                actionNotified = false;
-                SKSE::log::info("G-key held {:.2f}s, transitioning to throw charge", heldDuration);
+                SKSE::log::info("G-key held {:.2f}s, throw on release", heldDuration);
+                DoRelease(heldDuration);
             } else {
                 SKSE::log::info("G-key held {:.2f}s (>= {:.2f}s timeout), dropping", heldDuration, grabHoldTimeout);
                 DoRelease(0.0f);
