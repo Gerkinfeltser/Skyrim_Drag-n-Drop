@@ -500,6 +500,20 @@ RE::BSEventNotifyControl DragHandler::ProcessEvent(const RE::TESHitEvent* a_even
 
     if (state == State::Dragging && grabbedActor) {
         bool isProjectile = a_event->projectile != 0;
+        if (!isProjectile && a_event->source != 0) {
+            auto* sourceForm = RE::TESForm::LookupByID(a_event->source);
+            if (sourceForm) {
+                auto* weapon = sourceForm->As<RE::TESObjectWEAP>();
+                if (weapon) {
+                    auto wpnType = weapon->GetWeaponType();
+                    isProjectile = (wpnType == RE::WEAPON_TYPE::kBow || wpnType == RE::WEAPON_TYPE::kCrossbow);
+                } else {
+                    auto* ammo = sourceForm->As<RE::TESAmmo>();
+                    if (ammo) isProjectile = true;
+                }
+            }
+        }
+        SKSE::log::info("Player hit: source=0x{:08X} projectile=0x{:08X} isProjectile={} flags={}", a_event->source, a_event->projectile, isProjectile, static_cast<uint32_t>(a_event->flags.get()));
         float chance = isProjectile ? dropOnProjectileChance : dropOnHitChance;
         float roll = static_cast<float>(std::rand()) / (static_cast<float>(RAND_MAX) / 100.0f);
         if (roll >= chance) {
