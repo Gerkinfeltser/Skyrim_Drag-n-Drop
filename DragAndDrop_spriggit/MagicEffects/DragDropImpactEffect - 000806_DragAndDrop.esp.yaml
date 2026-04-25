@@ -10,15 +10,12 @@ Flags:
 - Painless
 - NoHitEffect
 Archetype:
-  MutagenObjectType: MagicEffectArchetype
-  Type: Cloak
+  MutagenObjectType: MagicEffectCloakArchetype
   Association: 000808:DragAndDrop.esp
 CastType: Concentration
 DualCastScale: 1
-MagicSkill: None
 CastingSoundLevel: Silent
 Sounds: []
-Conditions: []
 Description:
   TargetLanguage: English
   Value: ''

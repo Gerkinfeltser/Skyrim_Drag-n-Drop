@@ -16,7 +16,6 @@ Archetype:
   Type: Script
 CastType: FireAndForget
 DualCastScale: 1
-MagicSkill: None
 CastingSoundLevel: Silent
 Sounds: []
 Description:

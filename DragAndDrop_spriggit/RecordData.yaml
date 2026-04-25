@@ -1,5 +1,5 @@
 SpriggitSource:
-  PackageName: Skyrim
+  PackageName: Spriggit.Yaml.Skyrim
   Version: 0.40.0
 ModKey: DragAndDrop.esp
 GameRelease: SkyrimSE

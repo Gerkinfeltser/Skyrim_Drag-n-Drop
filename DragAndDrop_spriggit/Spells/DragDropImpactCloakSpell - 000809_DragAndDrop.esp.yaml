@@ -3,6 +3,9 @@ EditorID: DragDropImpactCloakSpell
 Name:
   TargetLanguage: English
   Value: Drag Drop Impact
+Description:
+  TargetLanguage: English
+  Value: ''
 Flags:
 - NoAbsorbOrReflect
 Type: Ability

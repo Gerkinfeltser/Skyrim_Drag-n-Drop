@@ -3,11 +3,12 @@ EditorID: DragDropImpactSpell
 Name:
   TargetLanguage: English
   Value: Drag Drop Impact
+Description:
+  TargetLanguage: English
+  Value: ''
 Flags:
 - NoAbsorbOrReflect
-Type: Spell
 CastType: FireAndForget
-Delivery: TargetActor
 Effects:
 - BaseEffect: 000807:DragAndDrop.esp
   Data: {}
