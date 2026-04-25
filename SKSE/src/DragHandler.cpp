@@ -436,53 +436,18 @@ RE::BSEventNotifyControl DragHandler::ProcessEvent(const RE::TESHitEvent* a_even
     if (!player || a_event->target.get()->GetFormID() != player->GetFormID()) return RE::BSEventNotifyControl::kContinue;
 
     if (state == State::Dragging && grabbedActor) {
-        SKSE::log::info("Player hit while dragging, dropping NPC");
-        RE::hkVector4 springBodyVel;
-        bool hasSpringVel = false;
-        auto& grabSpring = player->GetPlayerRuntimeData().grabSpring;
-        for (auto& springRef : grabSpring) {
-            if (!springRef) continue;
-            auto bhkObj = reinterpret_cast<RE::bhkRefObject*>(springRef.get());
-            if (!bhkObj || !bhkObj->referencedObject) continue;
-            auto actionBase = reinterpret_cast<std::uintptr_t>(bhkObj->referencedObject.get());
-            auto entityPtr = *reinterpret_cast<RE::hkpEntity**>(actionBase + 0x30);
-            if (!entityPtr) continue;
-            auto hkpRigidBody = reinterpret_cast<RE::hkpRigidBody*>(entityPtr);
-            springBodyVel = hkpRigidBody->motion.linearVelocity;
-            hasSpringVel = true;
-            break;
-        }
-
-        auto allBodies = CollectAllRigidBodies(grabbedActor);
-
-        player->DestroyMouseSprings();
-        player->AsMagicTarget()->DispelEffectsWithArchetype(RE::EffectArchetype::kGrabActor, true);
-        grabbedActor->AsMagicTarget()->DispelEffectsWithArchetype(RE::EffectArchetype::kGrabActor, true);
-        grabbedActor->AsActorValueOwner()->SetActorValue(RE::ActorValue::kParalysis, 0.0f);
-
-        if (hasSpringVel && !allBodies.empty()) {
-            auto capturedBodies = allBodies;
-            auto capturedVel = springBodyVel;
-            SKSE::GetTaskInterface()->AddTask([capturedBodies, capturedVel]() {
-                auto p = RE::PlayerCharacter::GetSingleton();
-                if (!p) return;
-                auto cell = p->GetParentCell();
-                auto bhkWorld = cell ? cell->GetbhkWorld() : nullptr;
-                if (!bhkWorld) return;
-                RE::BSWriteLockGuard locker(bhkWorld->worldLock);
-                for (auto* body : capturedBodies) {
-                    if (body) body->motion.SetLinearVelocity(capturedVel);
-                }
-            });
-        }
-
-        RestoreSpeed(player);
-        grabbedActor = nullptr;
-        state = State::None;
+        SKSE::log::info("Player hit while dragging, scheduling drop NPC");
         actionKeyHeld = false;
         actionNotified = false;
         spellCastDetected = false;
-        SKSE::log::info("Player hit drop complete");
+        grabKeyHeld = false;
+        auto formID = grabbedActor->GetFormID();
+        SKSE::GetTaskInterface()->AddTask([this, formID]() {
+            if (state != State::Dragging) return;
+            auto actor = RE::TESForm::LookupByID(formID)->As<RE::Actor>();
+            if (!actor || !grabbedActor || grabbedActor->GetFormID() != formID) return;
+            ReleaseNPC(false, 0.0f);
+        });
     }
 
     return RE::BSEventNotifyControl::kContinue;
