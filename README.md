@@ -1,10 +1,10 @@
 # Drag & Drop
 
-A Skyrim SE mod that lets you grab, drag, and throw NPCs using Havok physics. Self-contained — no other mods required (but pairs well with [Knockout and Surrender](https://www.nexusmods.com/skyrimspecialedition/mods/40556?tab=description))
+A Skyrim SE mod that lets you grab, drag, and throw NPCs using Havok physics. Self-contained — no other mods required (but pairs well with [Knockout and Surrender](https://www.nexusmods.com/skyrimspecialedition/mods/40556))
 
 ## Requirements
 
-- Skyrim Special Edition (1.5.97+ or 1.6.x AE)
+- Skyrim Special Edition (tested on 1.6.1170 AE)
 - SKSE64
 - Address Library for SKSE Plugins
 
@@ -127,7 +127,6 @@ Sound values are hex FormIDs of sound descriptors from Skyrim.esm (e.g., `0x3D0D
 ## Known Issues
 
 - **Power menu bypasses filters.** Casting the grab spell from the power menu ignores target restrictions (dev/debug mode).
-- **Stamina drain is not yet implemented.** The INI setting exists but does nothing yet.
 
 ## Early Access
 
