@@ -196,7 +196,7 @@ bool DragHandler::IsValidTarget(RE::Actor* a_actor) const
 
     if (blockTwoHanded) {
         auto player = RE::PlayerCharacter::GetSingleton();
-        if (player) {
+        if (player && player->AsActorState()->IsWeaponDrawn()) {
             for (bool left : {false, true}) {
                 auto* obj = player->GetEquippedObject(left);
                 if (obj) {
