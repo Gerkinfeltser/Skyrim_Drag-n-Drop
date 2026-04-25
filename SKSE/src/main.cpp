@@ -3,7 +3,7 @@
 
 namespace
 {
-    constexpr auto VERSION = "0.1.70-alpha";
+    constexpr auto VERSION = "0.1.89-alpha";
     constexpr auto BUILD = __DATE__ " " __TIME__;
 
     void InitializeLog()
@@ -27,6 +27,7 @@ namespace
         switch (a_message->type) {
         case SKSE::MessagingInterface::kPostLoad:
             DragHandler::GetSingleton()->LoadSettings();
+            spdlog::set_level(DragHandler::GetSingleton()->IsLoggingEnabled() ? spdlog::level::info : spdlog::level::warn);
             break;
         case SKSE::MessagingInterface::kInputLoaded:
             Hooks::Install();

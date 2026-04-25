@@ -53,7 +53,7 @@ namespace
         char defBuf[16];
         std::snprintf(defBuf, sizeof(defBuf), "%d", a_default);
         auto val = GetINIOption(a_path, a_section, a_key, defBuf);
-        return std::atoi(val.c_str());
+        return static_cast<int>(std::strtol(val.c_str(), nullptr, 0));
     }
 
     constexpr RE::FormID GHOST_KEYWORD{ 0xD205E };
@@ -103,6 +103,34 @@ namespace
         SKSE::log::info("Collected {} rigid bodies from actor scene graph", bodies.size());
         return bodies;
     }
+    void PlaySoundForm(RE::FormID a_formID)
+    {
+        if (a_formID == 0) return;
+        auto* descriptor = RE::TESForm::LookupByID<RE::BGSSoundDescriptorForm>(a_formID);
+        if (!descriptor) {
+            SKSE::log::warn("PlaySoundForm: LookupByID<SoundDescriptorForm>(0x{:08X}) returned null", a_formID);
+            return;
+        }
+        auto* audioMgr = RE::BSAudioManager::GetSingleton();
+        if (!audioMgr) {
+            SKSE::log::warn("PlaySoundForm: BSAudioManager is null");
+            return;
+        }
+        RE::BSSoundHandle handle;
+        audioMgr->BuildSoundDataFromDescriptor(handle, descriptor, 0x1A);
+        auto* player = RE::PlayerCharacter::GetSingleton();
+        if (player) {
+            auto* node3D = player->Get3D();
+            if (node3D) {
+                handle.SetObjectToFollow(node3D);
+            } else {
+                handle.SetPosition(player->GetPosition());
+            }
+        }
+        handle.SetVolume(1.0f);
+        bool played = handle.Play();
+        SKSE::log::info("PlaySoundForm: 0x{:08X} played={}", a_formID, played);
+    }
 }
 
 bool DragHandler::LoadSettings()
@@ -124,10 +152,17 @@ bool DragHandler::LoadSettings()
     bEnableGKeyGrab = GetINIBool(iniPath, "General", "bEnableGKeyGrab", true);
     grabHoldTimeout = GetINIFloat(iniPath, "General", "fGrabHoldTimeout", 0.5f);
     blockTwoHanded = GetINIBool(iniPath, "General", "bBlockTwoHanded", true);
+    blockUnsheathed = GetINIBool(iniPath, "General", "bBlockUnsheathed", false);
+    enableLogging = GetINIBool(iniPath, "General", "bEnableLogging", false);
 
     throwImpulseMax = GetINIFloat(iniPath, "Throw", "fThrowImpulseMax", 10.0f);
     throwDropWindow = GetINIFloat(iniPath, "Throw", "fThrowDropWindow", 0.5f);
     throwTimeToMax = GetINIFloat(iniPath, "Throw", "fThrowTimeToMax", 4.0f);
+
+    grabFailSoundForm = static_cast<RE::FormID>(GetINIInt(iniPath, "Sound", "iGrabFailSound", 0));
+    grabSoundForm = static_cast<RE::FormID>(GetINIInt(iniPath, "Sound", "iGrabSound", 0));
+    dropSoundForm = static_cast<RE::FormID>(GetINIInt(iniPath, "Sound", "iDropSound", 0));
+    throwSoundForm = static_cast<RE::FormID>(GetINIInt(iniPath, "Sound", "iThrowSound", 0));
 
     impactRadius = GetINIFloat(iniPath, "Impact", "fImpactRadius", 200.0f);
     impactDuration = GetINIFloat(iniPath, "Impact", "fImpactDuration", 3.0f);
@@ -160,6 +195,8 @@ bool DragHandler::LoadSettings()
         impactRadius, impactDuration, impactMinVelocity, impactForce, impactPushForceMax, impactDamage, impactDamageThrownMult);
     SKSE::log::info("  misc: staminaDrain={:.1f}, dragSpeed={:.1f}, noSpeedPenalty={}, actionKey=0x{:02X}, shoutKey={}",
         staminaDrainRate, dragSpeedMult, noSpeedPenalty, actionKey, useShoutKeyForRelease);
+    SKSE::log::info("  sounds: grabFail=0x{:08X}, throw=0x{:08X}, drop=0x{:08X}",
+        grabFailSoundForm, throwSoundForm, dropSoundForm);
 
     return true;
 }
@@ -194,8 +231,11 @@ bool DragHandler::IsValidTarget(RE::Actor* a_actor) const
 {
     if (!a_actor || a_actor->IsPlayerRef()) return false;
 
+    auto player = RE::PlayerCharacter::GetSingleton();
+
+    if (blockUnsheathed && player && player->AsActorState()->IsWeaponDrawn()) return false;
+
     if (blockTwoHanded) {
-        auto player = RE::PlayerCharacter::GetSingleton();
         if (player && player->AsActorState()->IsWeaponDrawn()) {
             for (bool left : {false, true}) {
                 auto* obj = player->GetEquippedObject(left);
@@ -229,7 +269,6 @@ bool DragHandler::IsValidTarget(RE::Actor* a_actor) const
     if (grabAnyone) return true;
     if (isDead || isParalyzed) return true;
 
-    auto player = RE::PlayerCharacter::GetSingleton();
     bool isHostile = player && a_actor->IsHostileToActor(player);
 
     SKSE::log::info("IsValidTarget: {} dead={} para={} hostile={} follower={} grabHostile={} grabFollowers={}",
@@ -1088,12 +1127,14 @@ void DragHandler::DoRelease(float a_heldDuration)
         RestoreCollisionFilters();
         RestoreSpeed(player);
         if (showNotifications) RE::DebugNotification("Dropped");
+        PlaySoundForm(dropSoundForm);
         return;
     }
 
     float force = GetForce(a_heldDuration);
     SKSE::log::info("Throwing (held {:.2f}s, force={:.0f})", a_heldDuration, force);
     ThrowGrabbedObject(a_heldDuration);
+    PlaySoundForm(throwSoundForm);
 
     char buf[64];
     std::snprintf(buf, sizeof(buf), "Threw! (%.0f force)", force);
@@ -1144,6 +1185,7 @@ bool DragHandler::ReleaseNPC(bool a_throw, float a_force)
 
     if (a_throw && player) {
         ThrowGrabbedObject(a_force > 0.0f ? a_force : 1.0f);
+        PlaySoundForm(throwSoundForm);
     } else if (player) {
         player->DestroyMouseSprings();
     }
@@ -1175,6 +1217,7 @@ bool DragHandler::ReleaseNPC(bool a_throw, float a_force)
     SKSE::log::info("Released (throw={}, force={:.1f})", a_throw, a_force);
 
     if (showNotifications) RE::DebugNotification(a_throw ? "Threw!" : "Released");
+    if (!a_throw) PlaySoundForm(dropSoundForm);
     RestoreSpeed(player);
     grabbedActor = nullptr;
     state = State::None;
@@ -1191,7 +1234,11 @@ void DragHandler::TryGrabWithSpell()
     if (!player || !grabSpell) return;
 
     auto target = GetCrosshairActor();
-    if (!target || !IsValidTarget(target)) return;
+    if (!target) return;
+    if (!IsValidTarget(target)) {
+        PlaySoundForm(grabFailSoundForm);
+        return;
+    }
 
     auto playerPos = player->GetPosition();
     auto targetPos = target->GetPosition();
@@ -1221,5 +1268,6 @@ void DragHandler::TryGrabWithSpell()
         if (!caster) return;
 
         caster->CastSpellImmediate(grabSpell, false, player, 1.0f, false, 0.0f, player);
+        PlaySoundForm(grabSoundForm);
     });
 }

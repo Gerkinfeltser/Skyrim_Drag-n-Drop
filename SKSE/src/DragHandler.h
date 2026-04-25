@@ -24,6 +24,7 @@ public:
     bool ReleaseNPC(bool a_throw, float a_force);
     RE::Actor* GetGrabbedActor() const { return grabbedActor; }
     bool IsDragging() const { return state != State::None; }
+    bool IsLoggingEnabled() const { return enableLogging; }
 
     void OnKeyDown(uint32_t a_key, const char* a_userEvent = "");
     void OnKeyUp(uint32_t a_key, const char* a_userEvent = "");
@@ -79,6 +80,12 @@ private:
     bool bEnableGKeyGrab{ true };
     float grabHoldTimeout{ 0.5f };
     bool blockTwoHanded{ true };
+    bool blockUnsheathed{ false };
+    RE::FormID grabFailSoundForm{ 0 };
+    RE::FormID grabSoundForm{ 0 };
+    RE::FormID throwSoundForm{ 0 };
+    RE::FormID dropSoundForm{ 0 };
+    bool enableLogging{ false };
 
     float throwImpulseMax{ 10.0f };
     float throwDropWindow{ 0.5f };
