@@ -619,11 +619,16 @@ void DragHandler::HandleDragFrame(RE::PlayerCharacter* a_player)
         return;
     }
 
-    if ((actionKeyHeld || spellCastDetected) && !actionNotified) {
+    bool isCharging = actionKeyHeld || spellCastDetected || (grabKeyHeld && chargeThrowOnHold);
+    if (isCharging && !actionNotified) {
         auto now = std::chrono::steady_clock::now();
-        auto startTime = actionKeyHeld ? actionKeyTime : spellCastTime;
+        std::chrono::steady_clock::time_point startTime;
+        if (grabKeyHeld && chargeThrowOnHold) startTime = grabKeyTime;
+        else if (actionKeyHeld) startTime = actionKeyTime;
+        else startTime = spellCastTime;
         float elapsed = std::chrono::duration<float>(now - startTime).count();
-        if (elapsed >= throwDropWindow) {
+        float threshold = (grabKeyHeld && chargeThrowOnHold) ? (grabHoldTimeout + throwDropWindow) : throwDropWindow;
+        if (elapsed >= threshold) {
             actionNotified = true;
             if (showNotifications) RE::DebugNotification("Ready to throw!");
         }
