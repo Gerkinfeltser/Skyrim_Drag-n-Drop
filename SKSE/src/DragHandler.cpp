@@ -144,6 +144,7 @@ bool DragHandler::LoadSettings()
     impactDamageSpeedScale = GetINIFloat(iniPath, "Impact", "fImpactDamageSpeedScale", 1.0f);
     dropOnPlayerHit = GetINIBool(iniPath, "General", "bDropOnPlayerHit", true);
     noSprint = GetINIBool(iniPath, "General", "bNoSprintWhileDragging", true);
+    showNotifications = GetINIBool(iniPath, "General", "bShowNotifications", true);
     springDamping = GetINIFloat(iniPath, "General", "fSpringDamping", 1.5f);
     springElasticity = GetINIFloat(iniPath, "General", "fSpringElasticity", 0.05f);
     springMaxForce = GetINIFloat(iniPath, "General", "fSpringMaxForce", 500.0f);
@@ -238,7 +239,7 @@ void DragHandler::DrainStamina(float a_dt)
     float currentStamina = player->AsActorValueOwner()->GetActorValue(RE::ActorValue::kStamina);
     float drain = staminaDrainRate * a_dt;
     if (currentStamina - drain <= 0.0f) {
-        RE::DebugNotification("Too exhausted to keep holding");
+        if (showNotifications) RE::DebugNotification("Too exhausted to keep holding");
     } else {
         player->AsActorValueOwner()->RestoreActorValue(RE::ACTOR_VALUE_MODIFIER::kDamage, RE::ActorValue::kStamina, -drain);
     }
@@ -578,7 +579,7 @@ void DragHandler::UpdateGrabState()
         float elapsed = std::chrono::duration<float>(now - startTime).count();
         if (elapsed >= throwDropWindow) {
             actionNotified = true;
-            RE::DebugNotification("Ready to throw!");
+            if (showNotifications) RE::DebugNotification("Ready to throw!");
         }
     }
 
@@ -1031,7 +1032,7 @@ void DragHandler::DoRelease(float a_heldDuration)
         spellCastDetected = false;
         RestoreCollisionFilters();
         RestoreSpeed(player);
-        RE::DebugNotification("Dropped");
+        if (showNotifications) RE::DebugNotification("Dropped");
         return;
     }
 
@@ -1041,7 +1042,7 @@ void DragHandler::DoRelease(float a_heldDuration)
 
     char buf[64];
     std::snprintf(buf, sizeof(buf), "Threw! (%.0f force)", force);
-    RE::DebugNotification(buf);
+    if (showNotifications) RE::DebugNotification(buf);
 
     if (player) {
         player->AsMagicTarget()->DispelEffectsWithArchetype(RE::EffectArchetype::kGrabActor, true);
@@ -1118,7 +1119,7 @@ bool DragHandler::ReleaseNPC(bool a_throw, float a_force)
 
     SKSE::log::info("Released (throw={}, force={:.1f})", a_throw, a_force);
 
-    RE::DebugNotification(a_throw ? "Threw!" : "Released");
+    if (showNotifications) RE::DebugNotification(a_throw ? "Threw!" : "Released");
     RestoreSpeed(player);
     grabbedActor = nullptr;
     state = State::None;
