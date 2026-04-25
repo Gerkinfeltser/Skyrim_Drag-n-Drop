@@ -270,9 +270,7 @@ Controlled by `bEnableLogging` in INI. Set to `true` for detailed output, `false
 
 ## Not Yet Implemented
 
-- Shield behavior (held NPC blocks arrows)
-- Knockdown from thrown NPCs
-- Velocity-scaled PushActorAway force
+- Velocity-scaled PushActorAway force (force is hardcoded at 5.0 in DragDropImpactScript.psc)
 - MCM menu for INI settings (see `docs/plans/SETTINGS-REFACTOR-PLAN.md` — partially obsolete, needs rewrite)
 - Knockout mod reload fix (stashed in Skyrim_KnockoutPatched)
 
