@@ -168,26 +168,38 @@ bool DragHandler::LoadSettings()
     SKSE::log::info("Loading settings from: {}", iniPath);
 
     enabled = GetINIBool(iniPath, "General", "bEnableMod", true);
-    grabRange = GetINIFloat(iniPath, "General", "fGrabRange", 150.0f);
-    grabFollowers = GetINIBool(iniPath, "General", "bGrabFollowers", true);
-    grabChildren = GetINIBool(iniPath, "General", "bGrabChildren", false);
-    grabAnyone = GetINIBool(iniPath, "General", "bGrabAnyone", false);
-    grabHostile = GetINIBool(iniPath, "General", "bGrabHostile", false);
-    staminaDrainRate = GetINIFloat(iniPath, "General", "fStaminaDrainRate", 5.0f);
-    dragSpeedMult = GetINIFloat(iniPath, "General", "fDragSpeedMult", 3.0f);
-    noSpeedPenalty = GetINIBool(iniPath, "General", "bNoSpeedPenalty", true);
-    actionKey = static_cast<uint32_t>(GetINIInt(iniPath, "General", "iActionKey", 0x22));
-    useShoutKeyForRelease = GetINIBool(iniPath, "General", "bUseShoutKeyForRelease", true);
-    bEnableGKeyGrab = GetINIBool(iniPath, "General", "bEnableGKeyGrab", true);
-    grabHoldTimeout = GetINIFloat(iniPath, "General", "fGrabHoldTimeout", 0.5f);
-    blockTwoHanded = GetINIBool(iniPath, "General", "bBlockTwoHanded", true);
-    blockUnsheathed = GetINIBool(iniPath, "General", "bBlockUnsheathed", false);
-    chargeThrowOnHold = GetINIBool(iniPath, "General", "bChargeThrowOnHold", false);
     enableLogging = GetINIBool(iniPath, "General", "bEnableLogging", false);
+    showNotifications = GetINIBool(iniPath, "General", "bShowNotifications", true);
+    actionKey = static_cast<uint32_t>(GetINIInt(iniPath, "General", "iActionKey", 0x22));
+    bEnableGKeyGrab = GetINIBool(iniPath, "General", "bEnableGKeyGrab", true);
+    useShoutKeyForRelease = GetINIBool(iniPath, "General", "bUseShoutKeyForRelease", true);
+
+    grabRange = GetINIFloat(iniPath, "Grab", "fGrabRange", 150.0f);
+    grabHoldTimeout = GetINIFloat(iniPath, "Grab", "fGrabHoldTimeout", 0.5f);
+    grabAnyone = GetINIBool(iniPath, "Grab", "bGrabAnyone", false);
+    grabFollowers = GetINIBool(iniPath, "Grab", "bGrabFollowers", true);
+    grabChildren = GetINIBool(iniPath, "Grab", "bGrabChildren", false);
+    grabHostile = GetINIBool(iniPath, "Grab", "bGrabHostile", false);
+    blockTwoHanded = GetINIBool(iniPath, "Grab", "bBlockTwoHanded", true);
+    blockUnsheathed = GetINIBool(iniPath, "Grab", "bBlockUnsheathed", false);
+
+    dragSpeedMult = GetINIFloat(iniPath, "Drag", "fDragSpeedMult", 3.0f);
+    noSpeedPenalty = GetINIBool(iniPath, "Drag", "bNoSpeedPenalty", true);
+    noSprint = GetINIBool(iniPath, "Drag", "bNoSprintWhileDragging", true);
+    staminaDrainRate = GetINIFloat(iniPath, "Drag", "fStaminaDrainRate", 5.0f);
+    dragMaxVelocity = GetINIFloat(iniPath, "Drag", "fDragMaxVelocity", 5.0f);
+    grabTetherDist = GetINIFloat(iniPath, "Drag", "fGrabTetherDist", 600.0f);
+    dropOnHitChance = GetINIFloat(iniPath, "Drag", "fDropOnHitChance", 100.0f);
+    dropOnProjectileChance = GetINIFloat(iniPath, "Drag", "fDropOnProjectileChance", 100.0f);
+    chargeThrowOnHold = GetINIBool(iniPath, "Drag", "bChargeThrowOnHold", false);
 
     throwImpulseMax = GetINIFloat(iniPath, "Throw", "fThrowImpulseMax", 10.0f);
     throwDropWindow = GetINIFloat(iniPath, "Throw", "fThrowDropWindow", 0.5f);
     throwTimeToMax = GetINIFloat(iniPath, "Throw", "fThrowTimeToMax", 4.0f);
+
+    springDamping = GetINIFloat(iniPath, "Physics", "fSpringDamping", 1.5f);
+    springElasticity = GetINIFloat(iniPath, "Physics", "fSpringElasticity", 0.05f);
+    springMaxForce = GetINIFloat(iniPath, "Physics", "fSpringMaxForce", 500.0f);
 
     grabFailSoundForm = static_cast<RE::FormID>(GetINIInt(iniPath, "Sound", "iGrabFailSound", 0));
     grabSoundForm = static_cast<RE::FormID>(GetINIInt(iniPath, "Sound", "iGrabSound", 0));
@@ -206,30 +218,25 @@ bool DragHandler::LoadSettings()
     swingImpactRadiusMult = GetINIFloat(iniPath, "Impact", "fSwingImpactRadiusMult", 0.5f);
     swingImpactStatics = GetINIBool(iniPath, "Impact", "bSwingImpactStatics", true);
     ragdollMaxVelocity = GetINIFloat(iniPath, "Impact", "fRagdollMaxVelocity", 20.0f);
-    dragMaxVelocity = GetINIFloat(iniPath, "General", "fDragMaxVelocity", 5.0f);
-    grabTetherDist = GetINIFloat(iniPath, "General", "fGrabTetherDist", 600.0f);
     impactForceSpeedScale = GetINIFloat(iniPath, "Impact", "fImpactForceSpeedScale", 1.0f);
     impactDamageSpeedScale = GetINIFloat(iniPath, "Impact", "fImpactDamageSpeedScale", 1.0f);
-    dropOnHitChance = GetINIFloat(iniPath, "General", "fDropOnHitChance", 100.0f);
-    dropOnProjectileChance = GetINIFloat(iniPath, "General", "fDropOnProjectileChance", 100.0f);
-    noSprint = GetINIBool(iniPath, "General", "bNoSprintWhileDragging", true);
-    showNotifications = GetINIBool(iniPath, "General", "bShowNotifications", true);
-    springDamping = GetINIFloat(iniPath, "General", "fSpringDamping", 1.5f);
-    springElasticity = GetINIFloat(iniPath, "General", "fSpringElasticity", 0.05f);
-    springMaxForce = GetINIFloat(iniPath, "General", "fSpringMaxForce", 500.0f);
 
-    SKSE::log::info("Settings: enabled={}, range={:.0f}, followers={}, children={}, anyone={}, hostile={}",
-        enabled, grabRange, grabFollowers, grabChildren, grabAnyone, grabHostile);
+    SKSE::log::info("Settings: enabled={}, logging={}, notifications={}, actionKey=0x{:02X}, gKeyGrab={}, shoutKey={}",
+        enabled, enableLogging, showNotifications, actionKey, bEnableGKeyGrab, useShoutKeyForRelease);
+    SKSE::log::info("  grab: range={:.0f}, holdTimeout={:.2f}, anyone={}, followers={}, children={}, hostile={}, twoHanded={}, unsheathed={}",
+        grabRange, grabHoldTimeout, grabAnyone, grabFollowers, grabChildren, grabHostile, blockTwoHanded, blockUnsheathed);
+    SKSE::log::info("  drag: speedMult={:.1f}, noSpeedPenalty={}, noSprint={}, staminaDrain={:.1f}, dragMaxVel={:.1f}, tetherDist={:.0f}",
+        dragSpeedMult, noSpeedPenalty, noSprint, staminaDrainRate, dragMaxVelocity, grabTetherDist);
+    SKSE::log::info("  drop: hitChance={:.1f}, projChance={:.1f}, chargeOnHold={}",
+        dropOnHitChance, dropOnProjectileChance, chargeThrowOnHold);
     SKSE::log::info("  throw: impulseMax={:.1f}, dropWindow={:.2f}, timeToMax={:.1f}",
         throwImpulseMax, throwDropWindow, throwTimeToMax);
-    SKSE::log::info("  impact: radius={:.0f}, duration={:.1f}, minVel={:.2f}, force={:.0f}, pushForce={:.1f}, damage={:.1f}, thrownDmgMult={:.1f}",
-        impactRadius, impactDuration, impactMinVelocity, impactForce, impactPushForceMax, impactDamage, impactDamageThrownMult);
-    SKSE::log::info("  misc: staminaDrain={:.1f}, dragSpeed={:.1f}, noSpeedPenalty={}, actionKey=0x{:02X}, shoutKey={}",
-        staminaDrainRate, dragSpeedMult, noSpeedPenalty, actionKey, useShoutKeyForRelease);
-    SKSE::log::info("  sounds: grabFail=0x{:08X}, throw=0x{:08X}, drop=0x{:08X}",
-        grabFailSoundForm, throwSoundForm, dropSoundForm);
-    SKSE::log::info("  drop: hitChance={:.1f}, projectileChance={:.1f}",
-        dropOnHitChance, dropOnProjectileChance);
+    SKSE::log::info("  physics: damping={:.2f}, elasticity={:.3f}, maxForce={:.0f}",
+        springDamping, springElasticity, springMaxForce);
+    SKSE::log::info("  impact: radius={:.0f}, duration={:.1f}, minVel={:.2f}, force={:.0f}",
+        impactRadius, impactDuration, impactMinVelocity, impactForce);
+    SKSE::log::info("  sounds: grabFail=0x{:08X}, grab=0x{:08X}, drop=0x{:08X}, throw=0x{:08X}",
+        grabFailSoundForm, grabSoundForm, dropSoundForm, throwSoundForm);
 
     return true;
 }
