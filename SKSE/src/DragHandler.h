@@ -43,6 +43,10 @@ public:
 
 private:
     void DrainStamina(float a_dt);
+    void HandleNewGrab(RE::PlayerCharacter* a_player);
+    void HandleDragFrame(RE::PlayerCharacter* a_player);
+    void HandleSwingImpact(RE::PlayerCharacter* a_player);
+    void HandleImpactTracking();
     void ThrowGrabbedObject(float a_heldDuration);
     RE::hkVector4 GetImpulse(float a_force, float a_mass) const;
     float GetForce(float a_heldDuration) const;

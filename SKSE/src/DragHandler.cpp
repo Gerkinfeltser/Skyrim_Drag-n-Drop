@@ -103,6 +103,34 @@ namespace
 
         return bodies;
     }
+    RE::hkpRigidBody* GetSpringBody(RE::PlayerCharacter* a_player)
+    {
+        if (!a_player) return nullptr;
+        auto& grabSpring = a_player->GetPlayerRuntimeData().grabSpring;
+        for (auto& springRef : grabSpring) {
+            if (!springRef) continue;
+            auto bhkObj = reinterpret_cast<RE::bhkRefObject*>(springRef.get());
+            if (!bhkObj || !bhkObj->referencedObject) continue;
+            auto actionBase = reinterpret_cast<std::uintptr_t>(bhkObj->referencedObject.get());
+            auto entityPtr = *reinterpret_cast<RE::hkpEntity**>(actionBase + 0x30);
+            if (entityPtr) return reinterpret_cast<RE::hkpRigidBody*>(entityPtr);
+        }
+        return nullptr;
+    }
+
+    std::uintptr_t GetSpringActionBase(RE::PlayerCharacter* a_player)
+    {
+        if (!a_player) return 0;
+        auto& grabSpring = a_player->GetPlayerRuntimeData().grabSpring;
+        for (auto& springRef : grabSpring) {
+            if (!springRef) continue;
+            auto bhkObj = reinterpret_cast<RE::bhkRefObject*>(springRef.get());
+            if (!bhkObj || !bhkObj->referencedObject) continue;
+            return reinterpret_cast<std::uintptr_t>(bhkObj->referencedObject.get());
+        }
+        return 0;
+    }
+
     void PlaySoundForm(RE::FormID a_formID)
     {
         if (a_formID == 0) return;
@@ -438,18 +466,10 @@ RE::BSEventNotifyControl DragHandler::ProcessEvent(const RE::TESHitEvent* a_even
 
         RE::hkVector4 springBodyVel;
         bool hasSpringVel = false;
-        auto& grabSpring = player->GetPlayerRuntimeData().grabSpring;
-        for (auto& springRef : grabSpring) {
-            if (!springRef) continue;
-            auto bhkObj = reinterpret_cast<RE::bhkRefObject*>(springRef.get());
-            if (!bhkObj || !bhkObj->referencedObject) continue;
-            auto actionBase = reinterpret_cast<std::uintptr_t>(bhkObj->referencedObject.get());
-            auto entityPtr = *reinterpret_cast<RE::hkpEntity**>(actionBase + 0x30);
-            if (!entityPtr) continue;
-            auto hkpRigidBody = reinterpret_cast<RE::hkpRigidBody*>(entityPtr);
-            springBodyVel = hkpRigidBody->motion.linearVelocity;
+        auto* springBody = GetSpringBody(player);
+        if (springBody) {
+            springBodyVel = springBody->motion.linearVelocity;
             hasSpringVel = true;
-            break;
         }
 
         auto allBodies = CollectAllRigidBodies(grabbedActor);
@@ -505,76 +525,78 @@ void DragHandler::UpdateGrabState()
     auto player = RE::PlayerCharacter::GetSingleton();
     if (!player) return;
 
-    if (state == State::None && player->IsGrabbing()) {
-        auto grabbedRef = player->GetGrabbedRef();
-        SKSE::log::info("UpdateGrabState: IsGrabbing=true, grabbedRef={} ({:08X})",
-            grabbedRef ? grabbedRef->GetDisplayFullName() : "null",
-            grabbedRef ? grabbedRef->GetFormID() : 0);
-        if (grabbedRef) {
-            grabbedActor = grabbedRef->As<RE::Actor>();
-            if (grabbedActor && IsValidTarget(grabbedActor)) {
-                state = State::Dragging;
-                grabStartTime = std::chrono::steady_clock::now();
-                ApplySpeedBoost(player);
+    if (state == State::None) HandleNewGrab(player);
+    if (state == State::Dragging) HandleDragFrame(player);
+    if (state == State::Dragging) HandleSwingImpact(player);
+    if (state == State::TrackingImpact) HandleImpactTracking();
+}
 
-                auto& grabSpring = player->GetPlayerRuntimeData().grabSpring;
-                for (auto& springRef : grabSpring) {
-                    if (!springRef) continue;
-                    auto bhkObj = reinterpret_cast<RE::bhkRefObject*>(springRef.get());
-                    if (!bhkObj || !bhkObj->referencedObject) continue;
-                    auto actionBase = reinterpret_cast<std::uintptr_t>(bhkObj->referencedObject.get());
+void DragHandler::HandleNewGrab(RE::PlayerCharacter* a_player)
+{
+    if (!a_player->IsGrabbing()) return;
 
-                    auto* damping = reinterpret_cast<float*>(actionBase + 0x60);
-                    auto* elasticity = reinterpret_cast<float*>(actionBase + 0x64);
-                    auto* maxForce = reinterpret_cast<float*>(actionBase + 0x68);
+    auto grabbedRef = a_player->GetGrabbedRef();
+    SKSE::log::info("HandleNewGrab: IsGrabbing=true, grabbedRef={} ({:08X})",
+        grabbedRef ? grabbedRef->GetDisplayFullName() : "null",
+        grabbedRef ? grabbedRef->GetFormID() : 0);
+    if (!grabbedRef) return;
 
-                    *damping = springDamping;
-                    *elasticity = springElasticity;
-                    *maxForce = springMaxForce;
-                }
+    grabbedActor = grabbedRef->As<RE::Actor>();
+    if (grabbedActor && IsValidTarget(grabbedActor)) {
+        state = State::Dragging;
+        grabStartTime = std::chrono::steady_clock::now();
+        ApplySpeedBoost(a_player);
 
-                auto cell = player->GetParentCell();
-                auto bhkWorld = cell ? cell->GetbhkWorld() : nullptr;
-                if (bhkWorld) {
-                    RE::BSWriteLockGuard locker(bhkWorld->worldLock);
-                    auto allBodies = CollectAllRigidBodies(grabbedActor);
-                    for (auto* body : allBodies) {
+        auto actionBase = GetSpringActionBase(a_player);
+        if (actionBase) {
+            *reinterpret_cast<float*>(actionBase + 0x60) = springDamping;
+            *reinterpret_cast<float*>(actionBase + 0x64) = springElasticity;
+            *reinterpret_cast<float*>(actionBase + 0x68) = springMaxForce;
+        }
+
+        auto cell = a_player->GetParentCell();
+        auto bhkWorld = cell ? cell->GetbhkWorld() : nullptr;
+        if (bhkWorld) {
+            RE::BSWriteLockGuard locker(bhkWorld->worldLock);
+            auto allBodies = CollectAllRigidBodies(grabbedActor);
+            for (auto* body : allBodies) {
+                body->motion.SetLinearVelocity(RE::hkVector4());
+                body->motion.SetAngularVelocity(RE::hkVector4());
+            }
+        }
+    } else if (grabbedActor) {
+        SKSE::log::info("HandleNewGrab: engine grab rejected, releasing");
+        auto allBodies = CollectAllRigidBodies(grabbedActor);
+        a_player->DestroyMouseSprings();
+        if (!allBodies.empty()) {
+            auto cell = a_player->GetParentCell();
+            auto bhkWorld = cell ? cell->GetbhkWorld() : nullptr;
+            if (bhkWorld) {
+                RE::BSWriteLockGuard locker(bhkWorld->worldLock);
+                for (auto* body : allBodies) {
+                    if (body) {
                         body->motion.SetLinearVelocity(RE::hkVector4());
                         body->motion.SetAngularVelocity(RE::hkVector4());
                     }
                 }
-            } else if (grabbedActor) {
-                SKSE::log::info("UpdateGrabState: engine grab rejected, releasing");
-                auto allBodies = CollectAllRigidBodies(grabbedActor);
-                player->DestroyMouseSprings();
-                if (!allBodies.empty()) {
-                    auto cell = player->GetParentCell();
-                    auto bhkWorld = cell ? cell->GetbhkWorld() : nullptr;
-                    if (bhkWorld) {
-                        RE::BSWriteLockGuard locker(bhkWorld->worldLock);
-                        for (auto* body : allBodies) {
-                            if (body) {
-                                body->motion.SetLinearVelocity(RE::hkVector4());
-                                body->motion.SetAngularVelocity(RE::hkVector4());
-                            }
-                        }
-                    }
-                }
-                player->AsMagicTarget()->DispelEffectsWithArchetype(RE::EffectArchetype::kGrabActor, true);
-                player->GetPlayerRuntimeData().grabbedObject = RE::ActorHandle();
-                grabbedActor = nullptr;
             }
         }
+        a_player->AsMagicTarget()->DispelEffectsWithArchetype(RE::EffectArchetype::kGrabActor, true);
+        a_player->GetPlayerRuntimeData().grabbedObject = RE::ActorHandle();
+        grabbedActor = nullptr;
     }
+}
 
-    if (state == State::Dragging && noSprint) {
-        float stamina = player->AsActorValueOwner()->GetActorValue(RE::ActorValue::kStamina);
+void DragHandler::HandleDragFrame(RE::PlayerCharacter* a_player)
+{
+    if (noSprint) {
+        float stamina = a_player->AsActorValueOwner()->GetActorValue(RE::ActorValue::kStamina);
         if (stamina > 0.0f) {
-            player->AsActorValueOwner()->RestoreActorValue(RE::ACTOR_VALUE_MODIFIER::kDamage, RE::ActorValue::kStamina, -stamina);
+            a_player->AsActorValueOwner()->RestoreActorValue(RE::ACTOR_VALUE_MODIFIER::kDamage, RE::ActorValue::kStamina, -stamina);
         }
     }
 
-    if (state == State::Dragging && staminaDrainRate > 0.0f) {
+    if (staminaDrainRate > 0.0f) {
         auto now = std::chrono::steady_clock::now();
         if (lastFrameTime.time_since_epoch().count() > 0) {
             float dt = std::chrono::duration<float>(now - lastFrameTime).count();
@@ -585,17 +607,18 @@ void DragHandler::UpdateGrabState()
         lastFrameTime = std::chrono::steady_clock::time_point{};
     }
 
-    if (state == State::Dragging && !player->IsGrabbing()) {
-        RestoreSpeed(player);
+    if (!a_player->IsGrabbing()) {
+        RestoreSpeed(a_player);
         grabbedActor = nullptr;
         state = State::None;
         actionKeyHeld = false;
         actionNotified = false;
         spellCastDetected = false;
         swingCooldowns.clear();
+        return;
     }
 
-    if (state == State::Dragging && (actionKeyHeld || spellCastDetected) && !actionNotified) {
+    if ((actionKeyHeld || spellCastDetected) && !actionNotified) {
         auto now = std::chrono::steady_clock::now();
         auto startTime = actionKeyHeld ? actionKeyTime : spellCastTime;
         float elapsed = std::chrono::duration<float>(now - startTime).count();
@@ -605,338 +628,316 @@ void DragHandler::UpdateGrabState()
         }
     }
 
-    if (state == State::Dragging && grabbedActor) {
-        auto grabbed3D = grabbedActor->Get3D();
-        if (grabbed3D) {
-            auto npcPos = grabbed3D->world.translate;
-            auto playerPos = player->Get3D() ? player->Get3D()->world.translate : player->GetPosition();
-            float dx = npcPos.x - playerPos.x;
-            float dy = npcPos.y - playerPos.y;
-            float dz = npcPos.z - playerPos.z;
-            float dist = std::sqrt(dx * dx + dy * dy + dz * dz);
+    if (!grabbedActor) return;
 
-            if (dist > grabTetherDist) {
-                SKSE::log::info("NPC exceeded tether distance ({:.0f} > {:.0f}), dropping", dist, grabTetherDist);
-                ReleaseNPC(false, 0.0f);
-                return;
-            }
-        }
+    auto grabbed3D = grabbedActor->Get3D();
+    if (grabbed3D) {
+        auto npcPos = grabbed3D->world.translate;
+        auto playerPos = a_player->Get3D() ? a_player->Get3D()->world.translate : a_player->GetPosition();
+        float dx = npcPos.x - playerPos.x;
+        float dy = npcPos.y - playerPos.y;
+        float dz = npcPos.z - playerPos.z;
+        float dist = std::sqrt(dx * dx + dy * dy + dz * dz);
 
-        auto cell = player->GetParentCell();
-        auto bhkWorld = cell ? cell->GetbhkWorld() : nullptr;
-        if (bhkWorld && dragMaxVelocity > 0.0f) {
-            RE::hkpRigidBody* springBody = nullptr;
-            auto& grabSpring = player->GetPlayerRuntimeData().grabSpring;
-            for (auto& springRef : grabSpring) {
-                if (!springRef) continue;
-                auto bhkObj = reinterpret_cast<RE::bhkRefObject*>(springRef.get());
-                if (!bhkObj || !bhkObj->referencedObject) continue;
-                auto actionBase = reinterpret_cast<std::uintptr_t>(bhkObj->referencedObject.get());
-                auto entityPtr = *reinterpret_cast<RE::hkpEntity**>(actionBase + 0x30);
-                if (entityPtr) {
-                    springBody = reinterpret_cast<RE::hkpRigidBody*>(entityPtr);
-                    break;
-                }
-            }
-
-            RE::BSWriteLockGuard locker(bhkWorld->worldLock);
-            auto allBodies = CollectAllRigidBodies(grabbedActor);
-            for (auto* body : allBodies) {
-                if (!body || body == springBody) continue;
-                auto& vel = body->motion.linearVelocity;
-                float speed = std::sqrt(vel.quad.m128_f32[0] * vel.quad.m128_f32[0] +
-                                        vel.quad.m128_f32[1] * vel.quad.m128_f32[1] +
-                                        vel.quad.m128_f32[2] * vel.quad.m128_f32[2]);
-                if (speed > dragMaxVelocity && speed > 0.001f) {
-                    float scale = dragMaxVelocity / speed;
-                    vel.quad.m128_f32[0] *= scale;
-                    vel.quad.m128_f32[1] *= scale;
-                    vel.quad.m128_f32[2] *= scale;
-                }
-            }
+        if (dist > grabTetherDist) {
+            SKSE::log::info("NPC exceeded tether distance ({:.0f} > {:.0f}), dropping", dist, grabTetherDist);
+            ReleaseNPC(false, 0.0f);
+            return;
         }
     }
 
-    if (state == State::Dragging && grabbedActor) {
-        auto now = std::chrono::steady_clock::now();
-        float grabElapsed = std::chrono::duration<float>(now - grabStartTime).count();
-        if (grabElapsed < 0.5f) return;
+    auto cell = a_player->GetParentCell();
+    auto bhkWorld = cell ? cell->GetbhkWorld() : nullptr;
+    if (bhkWorld && dragMaxVelocity > 0.0f) {
+        RE::hkpRigidBody* springBody = GetSpringBody(a_player);
 
-        auto thrown3D = grabbedActor->Get3D();
-        if (!thrown3D) return;
-        RE::NiPoint3 thrownPos = thrown3D->world.translate;
+        RE::BSWriteLockGuard locker(bhkWorld->worldLock);
+        auto allBodies = CollectAllRigidBodies(grabbedActor);
+        for (auto* body : allBodies) {
+            if (!body || body == springBody) continue;
+            auto& vel = body->motion.linearVelocity;
+            float speed = std::sqrt(vel.quad.m128_f32[0] * vel.quad.m128_f32[0] +
+                                    vel.quad.m128_f32[1] * vel.quad.m128_f32[1] +
+                                    vel.quad.m128_f32[2] * vel.quad.m128_f32[2]);
+            if (speed > dragMaxVelocity && speed > 0.001f) {
+                float scale = dragMaxVelocity / speed;
+                vel.quad.m128_f32[0] *= scale;
+                vel.quad.m128_f32[1] *= scale;
+                vel.quad.m128_f32[2] *= scale;
+            }
+        }
+    }
+}
 
-        auto& grabSpring = player->GetPlayerRuntimeData().grabSpring;
-        float springSpeed = 0.0f;
-        for (auto& springRef : grabSpring) {
-            if (!springRef) continue;
-            auto bhkObj = reinterpret_cast<RE::bhkRefObject*>(springRef.get());
-            if (!bhkObj || !bhkObj->referencedObject) continue;
-            auto actionBase = reinterpret_cast<std::uintptr_t>(bhkObj->referencedObject.get());
-            auto entityPtr = *reinterpret_cast<RE::hkpEntity**>(actionBase + 0x30);
-            if (!entityPtr) continue;
-            auto hkpRigidBody = reinterpret_cast<RE::hkpRigidBody*>(entityPtr);
-            auto& lv = hkpRigidBody->motion.linearVelocity;
-            float s = lv.quad.m128_f32[0] * lv.quad.m128_f32[0] +
-                      lv.quad.m128_f32[1] * lv.quad.m128_f32[1] +
-                      lv.quad.m128_f32[2] * lv.quad.m128_f32[2];
-            springSpeed = std::sqrt(s);
-            break;
+void DragHandler::HandleSwingImpact(RE::PlayerCharacter* a_player)
+{
+    if (!grabbedActor) return;
+
+    auto now = std::chrono::steady_clock::now();
+    float grabElapsed = std::chrono::duration<float>(now - grabStartTime).count();
+    if (grabElapsed < 0.5f) return;
+
+    auto thrown3D = grabbedActor->Get3D();
+    if (!thrown3D) return;
+    RE::NiPoint3 thrownPos = thrown3D->world.translate;
+
+    float springSpeed = 0.0f;
+    auto* springBody = GetSpringBody(a_player);
+    if (springBody) {
+        auto& lv = springBody->motion.linearVelocity;
+        springSpeed = std::sqrt(lv.quad.m128_f32[0] * lv.quad.m128_f32[0] +
+                                lv.quad.m128_f32[1] * lv.quad.m128_f32[1] +
+                                lv.quad.m128_f32[2] * lv.quad.m128_f32[2]);
+    }
+
+    if (springSpeed < impactMinVelocity) return;
+
+    if (swingImpactRadiusMult <= 0.0f) return;
+    float swingRadius = impactRadius * swingImpactRadiusMult;
+
+    auto cell = a_player->GetParentCell();
+    if (!cell) return;
+
+    cell->ForEachReferenceInRange(thrownPos, swingRadius, [&](RE::TESObjectREFR& a_ref) {
+        if (a_ref.GetFormID() == a_player->GetFormID()) return RE::BSContainer::ForEachResult::kContinue;
+        if (grabbedActor && a_ref.GetFormID() == grabbedActor->GetFormID()) return RE::BSContainer::ForEachResult::kContinue;
+
+        auto refPos = a_ref.GetPosition();
+        auto ref3D = a_ref.Get3D();
+        if (ref3D) {
+            refPos.x = ref3D->world.translate.x;
+            refPos.y = ref3D->world.translate.y;
+            refPos.z = ref3D->world.translate.z;
+        }
+        float dx = thrownPos.x - refPos.x;
+        float dy = thrownPos.y - refPos.y;
+        float dist = std::sqrt(dx * dx + dy * dy);
+        if (dist > swingRadius) return RE::BSContainer::ForEachResult::kContinue;
+
+        auto cdIt = swingCooldowns.find(a_ref.GetFormID());
+        if (cdIt != swingCooldowns.end()) {
+            float cdElapsed = std::chrono::duration<float>(now - cdIt->second).count();
+            if (cdElapsed < swingImpactCooldown) return RE::BSContainer::ForEachResult::kContinue;
         }
 
-        if (springSpeed < impactMinVelocity) return;
+        auto* actor = a_ref.As<RE::Actor>();
+        if (actor) {
+            if (actor->IsDead()) return RE::BSContainer::ForEachResult::kContinue;
+            if (actor->IsPlayerTeammate()) return RE::BSContainer::ForEachResult::kContinue;
 
-        if (swingImpactRadiusMult <= 0.0f) return;
-        float swingRadius = impactRadius * swingImpactRadiusMult;
+            swingCooldowns[a_ref.GetFormID()] = now;
+            SKSE::log::info("Swing impact: {} (dist={:.0f}, speed={:.2f})",
+                actor->GetDisplayFullName(), dist, springSpeed);
 
-        auto cell = player->GetParentCell();
-        if (!cell) return;
+            float swingSpeedMult = springSpeed * impactForceSpeedScale;
 
-        cell->ForEachReferenceInRange(thrownPos, swingRadius, [&](RE::TESObjectREFR& a_ref) {
-            if (a_ref.GetFormID() == player->GetFormID()) return RE::BSContainer::ForEachResult::kContinue;
-            if (grabbedActor && a_ref.GetFormID() == grabbedActor->GetFormID()) return RE::BSContainer::ForEachResult::kContinue;
+            RE::NiPoint3 dir = refPos - thrownPos;
+            float len = std::sqrt(dir.x * dir.x + dir.y * dir.y + dir.z * dir.z);
+            if (len > 0.001f) { dir.x /= len; dir.y /= len; dir.z /= len; }
 
-            auto refPos = a_ref.GetPosition();
-            auto ref3D = a_ref.Get3D();
-            if (ref3D) {
-                refPos.x = ref3D->world.translate.x;
-                refPos.y = ref3D->world.translate.y;
-                refPos.z = ref3D->world.translate.z;
-            }
-            float dx = thrownPos.x - refPos.x;
-            float dy = thrownPos.y - refPos.y;
-            float dist = std::sqrt(dx * dx + dy * dy);
-            if (dist > swingRadius) return RE::BSContainer::ForEachResult::kContinue;
-
-            auto cdIt = swingCooldowns.find(a_ref.GetFormID());
-            if (cdIt != swingCooldowns.end()) {
-                float cdElapsed = std::chrono::duration<float>(now - cdIt->second).count();
-                if (cdElapsed < swingImpactCooldown) return RE::BSContainer::ForEachResult::kContinue;
-            }
-
-            auto* actor = a_ref.As<RE::Actor>();
-            if (actor) {
-                if (actor->IsDead()) return RE::BSContainer::ForEachResult::kContinue;
-                if (actor->IsPlayerTeammate()) return RE::BSContainer::ForEachResult::kContinue;
-
-                swingCooldowns[a_ref.GetFormID()] = now;
-                SKSE::log::info("Swing impact: {} (dist={:.0f}, speed={:.2f})",
-                    actor->GetDisplayFullName(), dist, springSpeed);
-
-                float swingSpeedMult = springSpeed * impactForceSpeedScale;
-
-                RE::NiPoint3 dir = refPos - thrownPos;
-                float len = std::sqrt(dir.x * dir.x + dir.y * dir.y + dir.z * dir.z);
-                if (len > 0.001f) { dir.x /= len; dir.y /= len; dir.z /= len; }
-
-                if (actor->IsInRagdollState()) {
-                    auto allBodies = CollectAllRigidBodies(actor);
-                    if (!allBodies.empty()) {
-                        float scaledForce = impactForce * swingSpeedMult;
-                        RE::hkVector4 impulseHK(dir.x * scaledForce, dir.y * scaledForce, dir.z * scaledForce, 0.0f);
-                        auto bhkWorld = cell->GetbhkWorld();
-                        if (bhkWorld) {
-                            RE::BSWriteLockGuard locker(bhkWorld->worldLock);
-                            for (auto* body : allBodies) {
-                                if (body) {
-                                    float mass = body->motion.GetMass();
-                                    if (mass > 0.001f) ApplyClampedImpulse(body, impulseHK * mass, ragdollMaxVelocity);
-                                }
-                            }
-                        }
-                    }
-                } else {
-                    auto caster = player->GetMagicCaster(RE::MagicSystem::CastingSource::kInstant);
-                    if (caster && impactPushSpell) {
-                        caster->CastSpellImmediate(impactPushSpell, false, actor, 1.0f, false, 0.0f, nullptr);
-                    }
-                }
-
-                if (impactDamage > 0.0f) {
-                    float dmgScale = 1.0f + (springSpeed * impactDamageSpeedScale);
-                    float hitDmg = impactDamage * dmgScale;
-                    float thrownDmg = impactDamage * impactDamageThrownMult * dmgScale;
-                    actor->AsActorValueOwner()->RestoreActorValue(RE::ACTOR_VALUE_MODIFIER::kDamage, RE::ActorValue::kHealth, -hitDmg);
-                    if (grabbedActor && !grabbedActor->IsDead()) {
-                        grabbedActor->AsActorValueOwner()->RestoreActorValue(RE::ACTOR_VALUE_MODIFIER::kDamage, RE::ActorValue::kHealth, -thrownDmg);
-                    }
-                }
-            } else if (swingImpactStatics) {
-                auto root = a_ref.Get3D();
-                if (!root) return RE::BSContainer::ForEachResult::kContinue;
-
-                RE::NiPoint3 dir = refPos - thrownPos;
-                float len = std::sqrt(dir.x * dir.x + dir.y * dir.y + dir.z * dir.z);
-                if (len > 0.001f) { dir.x /= len; dir.y /= len; dir.z /= len; }
-
-                std::vector<RE::hkpRigidBody*> bodies;
-                RE::BSVisit::TraverseScenegraphCollision(root, [&](RE::bhkNiCollisionObject* a_colObj) {
-                    if (!a_colObj) return RE::BSVisit::BSVisitControl::kContinue;
-                    auto colObj = static_cast<RE::bhkCollisionObject*>(a_colObj);
-                    auto rigidBody = colObj->GetRigidBody();
-                    if (rigidBody && rigidBody->referencedObject) {
-                        auto hkpBody = reinterpret_cast<RE::hkpRigidBody*>(rigidBody->referencedObject.get());
-                        if (hkpBody && hkpBody->motion.type == RE::hkpMotion::MotionType::kDynamic) {
-                            bodies.push_back(hkpBody);
-                        }
-                    }
-                    return RE::BSVisit::BSVisitControl::kContinue;
-                });
-
-                if (!bodies.empty()) {
-                    swingCooldowns[a_ref.GetFormID()] = now;
-                    SKSE::log::info("Swing impact: static {} ({} bodies, dist={:.0f})",
-                        a_ref.GetDisplayFullName(), bodies.size(), dist);
-
-                    RE::hkVector4 impulseHK(dir.x * impactForce, dir.y * impactForce, dir.z * impactForce, 0.0f);
+            if (actor->IsInRagdollState()) {
+                auto allBodies = CollectAllRigidBodies(actor);
+                if (!allBodies.empty()) {
+                    float scaledForce = impactForce * swingSpeedMult;
+                    RE::hkVector4 impulseHK(dir.x * scaledForce, dir.y * scaledForce, dir.z * scaledForce, 0.0f);
                     auto bhkWorld = cell->GetbhkWorld();
                     if (bhkWorld) {
                         RE::BSWriteLockGuard locker(bhkWorld->worldLock);
-                        for (auto* body : bodies) {
-                            float mass = body->motion.GetMass();
-                            if (mass > 0.001f) ApplyClampedImpulse(body, impulseHK * mass, ragdollMaxVelocity);
+                        for (auto* body : allBodies) {
+                            if (body) {
+                                float mass = body->motion.GetMass();
+                                if (mass > 0.001f) ApplyClampedImpulse(body, impulseHK * mass, ragdollMaxVelocity);
+                            }
                         }
                     }
                 }
+            } else {
+                auto caster = a_player->GetMagicCaster(RE::MagicSystem::CastingSource::kInstant);
+                if (caster && impactPushSpell) {
+                    caster->CastSpellImmediate(impactPushSpell, false, actor, 1.0f, false, 0.0f, nullptr);
+                }
             }
 
-            return RE::BSContainer::ForEachResult::kContinue;
-        });
+            if (impactDamage > 0.0f) {
+                float dmgScale = 1.0f + (springSpeed * impactDamageSpeedScale);
+                float hitDmg = impactDamage * dmgScale;
+                float thrownDmg = impactDamage * impactDamageThrownMult * dmgScale;
+                actor->AsActorValueOwner()->RestoreActorValue(RE::ACTOR_VALUE_MODIFIER::kDamage, RE::ActorValue::kHealth, -hitDmg);
+                if (grabbedActor && !grabbedActor->IsDead()) {
+                    grabbedActor->AsActorValueOwner()->RestoreActorValue(RE::ACTOR_VALUE_MODIFIER::kDamage, RE::ActorValue::kHealth, -thrownDmg);
+                }
+            }
+        } else if (swingImpactStatics) {
+            auto root = a_ref.Get3D();
+            if (!root) return RE::BSContainer::ForEachResult::kContinue;
+
+            RE::NiPoint3 dir = refPos - thrownPos;
+            float len = std::sqrt(dir.x * dir.x + dir.y * dir.y + dir.z * dir.z);
+            if (len > 0.001f) { dir.x /= len; dir.y /= len; dir.z /= len; }
+
+            std::vector<RE::hkpRigidBody*> bodies;
+            RE::BSVisit::TraverseScenegraphCollision(root, [&](RE::bhkNiCollisionObject* a_colObj) {
+                if (!a_colObj) return RE::BSVisit::BSVisitControl::kContinue;
+                auto colObj = static_cast<RE::bhkCollisionObject*>(a_colObj);
+                auto rigidBody = colObj->GetRigidBody();
+                if (rigidBody && rigidBody->referencedObject) {
+                    auto hkpBody = reinterpret_cast<RE::hkpRigidBody*>(rigidBody->referencedObject.get());
+                    if (hkpBody && hkpBody->motion.type == RE::hkpMotion::MotionType::kDynamic) {
+                        bodies.push_back(hkpBody);
+                    }
+                }
+                return RE::BSVisit::BSVisitControl::kContinue;
+            });
+
+            if (!bodies.empty()) {
+                swingCooldowns[a_ref.GetFormID()] = now;
+                SKSE::log::info("Swing impact: static {} ({} bodies, dist={:.0f})",
+                    a_ref.GetDisplayFullName(), bodies.size(), dist);
+
+                RE::hkVector4 impulseHK(dir.x * impactForce, dir.y * impactForce, dir.z * impactForce, 0.0f);
+                auto bhkWorld = cell->GetbhkWorld();
+                if (bhkWorld) {
+                    RE::BSWriteLockGuard locker(bhkWorld->worldLock);
+                    for (auto* body : bodies) {
+                        float mass = body->motion.GetMass();
+                        if (mass > 0.001f) ApplyClampedImpulse(body, impulseHK * mass, ragdollMaxVelocity);
+                    }
+                }
+            }
+        }
+
+        return RE::BSContainer::ForEachResult::kContinue;
+    });
+}
+
+void DragHandler::HandleImpactTracking()
+{
+    auto now = std::chrono::steady_clock::now();
+    float elapsed = std::chrono::duration<float>(now - impactTrackStart).count();
+
+    if (elapsed > impactDuration) {
+        SKSE::log::info("Impact tracking: timeout after {:.2f}s", elapsed);
+        impactTrackFormID = 0;
+        state = State::None;
+        return;
     }
 
-    if (state == State::TrackingImpact) {
-        auto now = std::chrono::steady_clock::now();
-        float elapsed = std::chrono::duration<float>(now - impactTrackStart).count();
+    auto thrownActor = RE::TESForm::LookupByID(impactTrackFormID)->As<RE::Actor>();
+    if (!thrownActor) {
+        state = State::None;
+        return;
+    }
 
-        if (elapsed > impactDuration) {
-            SKSE::log::info("Impact tracking: timeout after {:.2f}s", elapsed);
-            impactTrackFormID = 0;
-            state = State::None;
-            return;
+    auto thrownBodies = CollectAllRigidBodies(thrownActor);
+    float totalSpeed = 0.0f;
+    int velCount = 0;
+    for (auto* body : thrownBodies) {
+        if (body) {
+            auto& lv = body->motion.linearVelocity;
+            float s = lv.quad.m128_f32[0] * lv.quad.m128_f32[0] +
+                      lv.quad.m128_f32[1] * lv.quad.m128_f32[1] +
+                      lv.quad.m128_f32[2] * lv.quad.m128_f32[2];
+            totalSpeed += std::sqrt(s);
+            velCount++;
         }
+    }
+    float avgSpeed = velCount > 0 ? totalSpeed / velCount : 0.0f;
 
-        auto thrownActor = RE::TESForm::LookupByID(impactTrackFormID)->As<RE::Actor>();
-        if (!thrownActor) {
-            state = State::None;
-            return;
-        }
+    auto thrownPos = thrownActor->GetPosition();
+    auto thrown3D = thrownActor->Get3D();
+    if (thrown3D) {
+        auto& worldPos = thrown3D->world;
+        thrownPos.x = worldPos.translate.x;
+        thrownPos.y = worldPos.translate.y;
+        thrownPos.z = worldPos.translate.z;
+    }
 
-        auto thrownBodies = CollectAllRigidBodies(thrownActor);
-        float totalSpeed = 0.0f;
-        int velCount = 0;
-        for (auto* body : thrownBodies) {
-            if (body) {
-                auto& lv = body->motion.linearVelocity;
-                float s = lv.quad.m128_f32[0] * lv.quad.m128_f32[0] +
-                          lv.quad.m128_f32[1] * lv.quad.m128_f32[1] +
-                          lv.quad.m128_f32[2] * lv.quad.m128_f32[2];
-                totalSpeed += std::sqrt(s);
-                velCount++;
+    if (avgSpeed < impactMinVelocity) {
+        SKSE::log::info("Impact tracking: NPC stopped (avgSpeed={:.4f} HK)", avgSpeed);
+        impactTrackFormID = 0;
+        state = State::None;
+        return;
+    }
+
+    auto processLists = RE::ProcessLists::GetSingleton();
+    if (!processLists) return;
+
+    processLists->ForAllActors([&](RE::Actor& actor) {
+        if (actor.GetFormID() == impactTrackFormID) return RE::BSContainer::ForEachResult::kContinue;
+        if (actor.IsPlayerRef()) return RE::BSContainer::ForEachResult::kContinue;
+        if (actor.IsDead()) return RE::BSContainer::ForEachResult::kContinue;
+        if (actor.IsPlayerTeammate()) return RE::BSContainer::ForEachResult::kContinue;
+
+        auto actorPos = actor.GetPosition();
+        float dx = thrownPos.x - actorPos.x;
+        float dy = thrownPos.y - actorPos.y;
+        float dist = std::sqrt(dx * dx + dy * dy);
+
+        if (dist < impactRadius && impactHitActors.find(actor.GetFormID()) == impactHitActors.end()) {
+            impactHitActors.insert(actor.GetFormID());
+            SKSE::log::info("Impact: {} hit by thrown NPC (dist={:.0f}, speed={:.4f})",
+                actor.GetDisplayFullName(), dist, avgSpeed);
+
+            float speedMult = avgSpeed * impactForceSpeedScale;
+
+            if (impactDamage > 0.0f) {
+                float dmgScale = 1.0f + (avgSpeed * impactDamageSpeedScale);
+                float hitDmg = impactDamage * dmgScale;
+                float thrownDmg = impactDamage * impactDamageThrownMult * dmgScale;
+                actor.AsActorValueOwner()->RestoreActorValue(
+                    RE::ACTOR_VALUE_MODIFIER::kDamage, RE::ActorValue::kHealth, -hitDmg);
+                if (thrownActor && !thrownActor->IsDead()) {
+                    thrownActor->AsActorValueOwner()->RestoreActorValue(
+                        RE::ACTOR_VALUE_MODIFIER::kDamage, RE::ActorValue::kHealth, -thrownDmg);
+                }
+                SKSE::log::info("  Impact damage: {:.1f} (hit), {:.1f} (thrown), speedScale={:.2f}",
+                    hitDmg, thrownDmg, dmgScale);
             }
-        }
-        float avgSpeed = velCount > 0 ? totalSpeed / velCount : 0.0f;
 
-        auto thrownPos = thrownActor->GetPosition();
-        auto thrown3D = thrownActor->Get3D();
-        if (thrown3D) {
-            auto& worldPos = thrown3D->world;
-            thrownPos.x = worldPos.translate.x;
-            thrownPos.y = worldPos.translate.y;
-            thrownPos.z = worldPos.translate.z;
-        }
+            RE::NiPoint3 dir = actorPos - thrownPos;
+            float len = std::sqrt(dir.x * dir.x + dir.y * dir.y + dir.z * dir.z);
+            if (len > 0.001f) {
+                dir.x /= len; dir.y /= len; dir.z /= len;
+            }
 
-        SKSE::log::info("Impact tracking: ragdollCenter=({:.0f},{:.0f},{:.0f}) actorPos=({:.0f},{:.0f},{:.0f}) avgSpeed={:.4f}",
-            thrownPos.x, thrownPos.y, thrownPos.z,
-            thrownActor->GetPosition().x, thrownActor->GetPosition().y, thrownActor->GetPosition().z,
-            avgSpeed);
+            if (actor.IsDead() || actor.IsInRagdollState()) {
+                auto allBodies = CollectAllRigidBodies(&actor);
+                if (!allBodies.empty()) {
+                    float scaledForce = impactForce * speedMult;
+                    RE::hkVector4 impulseHK(
+                        dir.x * scaledForce,
+                        dir.y * scaledForce,
+                        dir.z * scaledForce,
+                        0.0f);
 
-        if (avgSpeed < impactMinVelocity) {
-            SKSE::log::info("Impact tracking: NPC stopped (avgSpeed={:.4f} HK)", avgSpeed);
-            impactTrackFormID = 0;
-            state = State::None;
-            return;
-        }
-
-        auto processLists = RE::ProcessLists::GetSingleton();
-        if (!processLists) return;
-
-        processLists->ForAllActors([&](RE::Actor& actor) {
-            if (actor.GetFormID() == impactTrackFormID) return RE::BSContainer::ForEachResult::kContinue;
-            if (actor.IsPlayerRef()) return RE::BSContainer::ForEachResult::kContinue;
-            if (actor.IsDead()) return RE::BSContainer::ForEachResult::kContinue;
-            if (actor.IsPlayerTeammate()) return RE::BSContainer::ForEachResult::kContinue;
-
-            auto actorPos = actor.GetPosition();
-            float dx = thrownPos.x - actorPos.x;
-            float dy = thrownPos.y - actorPos.y;
-            float dist = std::sqrt(dx * dx + dy * dy);
-
-            if (dist < impactRadius && impactHitActors.find(actor.GetFormID()) == impactHitActors.end()) {
-                impactHitActors.insert(actor.GetFormID());
-                SKSE::log::info("Impact: {} hit by thrown NPC (dist={:.0f}, speed={:.4f})",
-                    actor.GetDisplayFullName(), dist, avgSpeed);
-
-                float speedMult = avgSpeed * impactForceSpeedScale;
-
-                if (impactDamage > 0.0f) {
-                    float dmgScale = 1.0f + (avgSpeed * impactDamageSpeedScale);
-                    float hitDmg = impactDamage * dmgScale;
-                    float thrownDmg = impactDamage * impactDamageThrownMult * dmgScale;
-                    actor.AsActorValueOwner()->RestoreActorValue(
-                        RE::ACTOR_VALUE_MODIFIER::kDamage, RE::ActorValue::kHealth, -hitDmg);
-                    if (thrownActor && !thrownActor->IsDead()) {
-                        thrownActor->AsActorValueOwner()->RestoreActorValue(
-                            RE::ACTOR_VALUE_MODIFIER::kDamage, RE::ActorValue::kHealth, -thrownDmg);
-                    }
-                    SKSE::log::info("  Impact damage: {:.1f} (hit), {:.1f} (thrown), speedScale={:.2f}",
-                        hitDmg, thrownDmg, dmgScale);
-                }
-
-                RE::NiPoint3 dir = actorPos - thrownPos;
-                float len = std::sqrt(dir.x * dir.x + dir.y * dir.y + dir.z * dir.z);
-                if (len > 0.001f) {
-                    dir.x /= len; dir.y /= len; dir.z /= len;
-                }
-
-                if (actor.IsDead() || actor.IsInRagdollState()) {
-                    auto allBodies = CollectAllRigidBodies(&actor);
-                    if (!allBodies.empty()) {
-                        float scaledForce = impactForce * speedMult;
-                        RE::hkVector4 impulseHK(
-                            dir.x * scaledForce,
-                            dir.y * scaledForce,
-                            dir.z * scaledForce,
-                            0.0f);
-
-                        auto cell = thrownActor->GetParentCell();
-                        auto bhkWorld = cell ? cell->GetbhkWorld() : nullptr;
-                        if (bhkWorld) {
-                            RE::BSWriteLockGuard locker(bhkWorld->worldLock);
-                            for (auto* body : allBodies) {
-                                if (body) {
-                                    float mass = body->motion.GetMass();
-                                    if (mass > 0.001f) {
-                                        ApplyClampedImpulse(body, impulseHK * mass, ragdollMaxVelocity);
-                                    }
+                    auto cell = thrownActor->GetParentCell();
+                    auto bhkWorld = cell ? cell->GetbhkWorld() : nullptr;
+                    if (bhkWorld) {
+                        RE::BSWriteLockGuard locker(bhkWorld->worldLock);
+                        for (auto* body : allBodies) {
+                            if (body) {
+                                float mass = body->motion.GetMass();
+                                if (mass > 0.001f) {
+                                    ApplyClampedImpulse(body, impulseHK * mass, ragdollMaxVelocity);
                                 }
                             }
-                            SKSE::log::info("  Applied ragdoll impulse to {} bodies", allBodies.size());
                         }
+                        SKSE::log::info("  Applied ragdoll impulse to {} bodies", allBodies.size());
                     }
-                } else {
-                    SKSE::log::info("  Standing actor hit, casting PushActorAway spell");
-                    auto player = RE::PlayerCharacter::GetSingleton();
-                    if (player && impactPushSpell) {
-                        auto caster = player->GetMagicCaster(RE::MagicSystem::CastingSource::kInstant);
-                        if (caster) {
-                            caster->CastSpellImmediate(impactPushSpell, false, &actor, 1.0f, false, 0.0f, nullptr);
-                        }
+                }
+            } else {
+                SKSE::log::info("  Standing actor hit, casting PushActorAway spell");
+                auto player = RE::PlayerCharacter::GetSingleton();
+                if (player && impactPushSpell) {
+                    auto caster = player->GetMagicCaster(RE::MagicSystem::CastingSource::kInstant);
+                    if (caster) {
+                        caster->CastSpellImmediate(impactPushSpell, false, &actor, 1.0f, false, 0.0f, nullptr);
                     }
                 }
             }
-            return RE::BSContainer::ForEachResult::kContinue;
-        });
-    }
+        }
+        return RE::BSContainer::ForEachResult::kContinue;
+    });
 }
 
 void DragHandler::OnKeyDown(uint32_t a_key, const char* a_userEvent)
@@ -1011,18 +1012,10 @@ void DragHandler::DoRelease(float a_heldDuration)
         RE::hkVector4 springBodyVel;
         bool hasSpringVel = false;
         if (player) {
-            auto& grabSpring = player->GetPlayerRuntimeData().grabSpring;
-            for (auto& springRef : grabSpring) {
-                if (!springRef) continue;
-                auto bhkObj = reinterpret_cast<RE::bhkRefObject*>(springRef.get());
-                if (!bhkObj || !bhkObj->referencedObject) continue;
-                auto actionBase = reinterpret_cast<std::uintptr_t>(bhkObj->referencedObject.get());
-                auto entityPtr = *reinterpret_cast<RE::hkpEntity**>(actionBase + 0x30);
-                if (!entityPtr) continue;
-                auto hkpRigidBody = reinterpret_cast<RE::hkpRigidBody*>(entityPtr);
-                springBodyVel = hkpRigidBody->motion.linearVelocity;
+            auto* springBody = GetSpringBody(player);
+            if (springBody) {
+                springBodyVel = springBody->motion.linearVelocity;
                 hasSpringVel = true;
-                break;
             }
         }
 
@@ -1114,18 +1107,10 @@ bool DragHandler::ReleaseNPC(bool a_throw, float a_force)
     RE::hkVector4 springBodyVel;
     bool hasSpringVel = false;
     if (player && !a_throw) {
-        auto& grabSpring = player->GetPlayerRuntimeData().grabSpring;
-        for (auto& springRef : grabSpring) {
-            if (!springRef) continue;
-            auto bhkObj = reinterpret_cast<RE::bhkRefObject*>(springRef.get());
-            if (!bhkObj || !bhkObj->referencedObject) continue;
-            auto actionBase = reinterpret_cast<std::uintptr_t>(bhkObj->referencedObject.get());
-            auto entityPtr = *reinterpret_cast<RE::hkpEntity**>(actionBase + 0x30);
-            if (!entityPtr) continue;
-            auto hkpRigidBody = reinterpret_cast<RE::hkpRigidBody*>(entityPtr);
-            springBodyVel = hkpRigidBody->motion.linearVelocity;
+        auto* springBody = GetSpringBody(player);
+        if (springBody) {
+            springBodyVel = springBody->motion.linearVelocity;
             hasSpringVel = true;
-            break;
         }
     }
 
