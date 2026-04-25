@@ -97,6 +97,7 @@ private:
     std::chrono::steady_clock::time_point spellCastTime;
 
     std::chrono::steady_clock::time_point grabStartTime;
+    std::chrono::steady_clock::time_point lastFrameTime;
 
     RE::FormID impactTrackFormID{ 0 };
     std::chrono::steady_clock::time_point impactTrackStart;
@@ -118,7 +119,6 @@ private:
     float grabTetherDist{ 600.0f };
     float impactForceSpeedScale{ 1.0f };
     float impactDamageSpeedScale{ 1.0f };
-    bool dropOnPlayerHit{ true };
     float dropOnHitChance{ 100.0f };
     float dropOnProjectileChance{ 100.0f };
     bool noSprint{ true };

@@ -180,7 +180,6 @@ bool DragHandler::LoadSettings()
     grabTetherDist = GetINIFloat(iniPath, "General", "fGrabTetherDist", 600.0f);
     impactForceSpeedScale = GetINIFloat(iniPath, "Impact", "fImpactForceSpeedScale", 1.0f);
     impactDamageSpeedScale = GetINIFloat(iniPath, "Impact", "fImpactDamageSpeedScale", 1.0f);
-    dropOnPlayerHit = GetINIBool(iniPath, "General", "bDropOnPlayerHit", true);
     dropOnHitChance = GetINIFloat(iniPath, "General", "fDropOnHitChance", 100.0f);
     dropOnProjectileChance = GetINIFloat(iniPath, "General", "fDropOnProjectileChance", 100.0f);
     noSprint = GetINIBool(iniPath, "General", "bNoSprintWhileDragging", true);
@@ -305,6 +304,7 @@ void DragHandler::DrainStamina(float a_dt)
     float drain = staminaDrainRate * a_dt;
     if (currentStamina - drain <= 0.0f) {
         if (showNotifications) RE::DebugNotification("Too exhausted to keep holding");
+        DoRelease(0.0f);
     } else {
         player->AsActorValueOwner()->RestoreActorValue(RE::ACTOR_VALUE_MODIFIER::kDamage, RE::ActorValue::kStamina, -drain);
     }
@@ -493,7 +493,7 @@ void DragHandler::ForceRagdoll(RE::Actor* a_actor)
 
 RE::BSEventNotifyControl DragHandler::ProcessEvent(const RE::TESHitEvent* a_event, RE::BSTEventSource<RE::TESHitEvent>*)
 {
-    if (!a_event || !a_event->target || !dropOnPlayerHit) return RE::BSEventNotifyControl::kContinue;
+    if (!a_event || !a_event->target) return RE::BSEventNotifyControl::kContinue;
 
     auto player = RE::PlayerCharacter::GetSingleton();
     if (!player || a_event->target.get()->GetFormID() != player->GetFormID()) return RE::BSEventNotifyControl::kContinue;
@@ -644,6 +644,17 @@ void DragHandler::UpdateGrabState()
         if (stamina > 0.0f) {
             player->AsActorValueOwner()->RestoreActorValue(RE::ACTOR_VALUE_MODIFIER::kDamage, RE::ActorValue::kStamina, -stamina);
         }
+    }
+
+    if (state == State::Dragging && staminaDrainRate > 0.0f) {
+        auto now = std::chrono::steady_clock::now();
+        if (lastFrameTime.time_since_epoch().count() > 0) {
+            float dt = std::chrono::duration<float>(now - lastFrameTime).count();
+            DrainStamina(dt);
+        }
+        lastFrameTime = now;
+    } else {
+        lastFrameTime = std::chrono::steady_clock::time_point{};
     }
 
     if (state == State::Dragging && !player->IsGrabbing()) {
