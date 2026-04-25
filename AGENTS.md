@@ -54,6 +54,7 @@ Full setting descriptions: see `docs/INI-SETTINGS.md`
 ```ini
 [General]
 bEnableMod = true
+bEnableLogging = false
 fGrabRange = 150.0
 bGrabAnyone = false
 bGrabFollowers = true
@@ -68,6 +69,8 @@ bDropOnPlayerHit = true
 bNoSprintWhileDragging = true
 bShowNotifications = true
 fGrabHoldTimeout = 0.5
+bBlockTwoHanded = true
+bBlockUnsheathed = false
 fSpringDamping = 1.5
 fSpringElasticity = 0.05
 fSpringMaxForce = 1000.0
@@ -78,6 +81,12 @@ fGrabTetherDist = 600.0
 fThrowImpulseMax = 20.0
 fThrowDropWindow = 0.2
 fThrowTimeToMax = 3.0
+
+[Sound]
+iGrabFailSound = 0x0
+iGrabSound = 0x0
+iDropSound = 0x0
+iThrowSound = 0x0
 
 [Impact]
 fImpactRadius = 120
@@ -207,11 +216,27 @@ DragDrop.IsDragging()              ; Returns bool
 - While dragging, player SpeedMult is multiplied by `fDragSpeedMult`
 - Restored on release
 
+### Block Two-Handed / Block Unsheathed
+- `bBlockTwoHanded`: prevents grab when wielding two-handed weapons or bows while unsheathed
+- `bBlockUnsheathed`: prevents grab when any weapon is drawn (stronger restriction)
+
+### Sound Effects
+- Configurable via `[Sound]` INI section with hex FormIDs from Skyrim.esm
+- `iGrabFailSound`, `iGrabSound`, `iDropSound`, `iThrowSound` — set to `0` to disable
+- Uses `BSSoundHandle` with `SetObjectToFollow(player->Get3D())` + `SetVolume(1.0f)` before `Play()`
+- FormIDs resolved via `TESForm::LookupByID<BGSSoundDescriptorForm>`
+
+### Logging
+- `bEnableLogging` in `[General]` — controls spdlog level (`info` when true, `warn` when false)
+- Log file: `C:\Users\vector\Documents\My Games\Skyrim.INI\SKSE\DragAndDrop.log`
+
 ## Log File
 
 ```
 C:\Users\vector\Documents\My Games\Skyrim.INI\SKSE\DragAndDrop.log
 ```
+
+Controlled by `bEnableLogging` in INI. Set to `true` for detailed output, `false` for warnings only.
 
 ## Dependencies
 
@@ -232,8 +257,8 @@ C:\Users\vector\Documents\My Games\Skyrim.INI\SKSE\DragAndDrop.log
 
 ## Key References
 
-- GrabAndThrow by powerof3: Havok spring access, throw impulse pattern, player->grabSpring
-- CatchAndRelease: GrabActor spell config (FireAndForget + Duration 999999)
+- [GrabAndThrow](https://www.nexusmods.com/skyrimspecialedition/mods/120460) by powerof3: Havok spring access, throw impulse pattern, player->grabSpring
+- [CatchAndRelease](https://www.nexusmods.com/skyrimspecialedition/mods/135703): GrabActor spell config (FireAndForget + Duration 999999)
 
 ## Known Issues
 

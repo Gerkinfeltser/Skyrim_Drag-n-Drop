@@ -25,6 +25,9 @@ All settings live in `SKSE/Plugins/DragAndDrop.ini`. Loaded at startup via Win32
 | `bNoSprintWhileDragging` | bool | `true` | When `true`, drains player stamina to 0 each frame while dragging. The game's sprint system requires stamina, so this naturally prevents sprinting. |
 | `bShowNotifications` | bool | `true` | Show debug notifications ("Ready to throw!", "Dropped", "Threw!", etc.). Set to `false` to suppress all notifications. |
 | `fGrabHoldTimeout` | float | `0.5` | Seconds to hold G on initial grab before releasing triggers a drop. If you release G after this timeout, the NPC drops with momentum. Release before timeout = NPC stays grabbed (tap-grab). |
+| `bBlockTwoHanded` | bool | `true` | Prevents grab when wielding two-handed weapons or bows while weapons are unsheathed. Checks both left and right hand for weapon types: TwoHandSword, TwoHandAxe, Bow, Crossbow. |
+| `bBlockUnsheathed` | bool | `false` | Prevents grab when **any** weapon is drawn. Stronger restriction than `bBlockTwoHanded` — blocks all weapon types, not just two-handed. |
+| `bEnableLogging` | bool | `false` | Enable detailed log output to `DragAndDrop.log`. When `false`, only warnings and errors are logged. When `true`, all info-level messages are logged including frame-by-frame physics data. |
 | `fSpringDamping` | float | `1.5` | Havok mouse spring damping. Higher values = spring resists motion more (sluggish feel). Lower values = spring is more responsive but can oscillate. |
 | `fSpringElasticity` | float | `0.05` | Havok mouse spring elasticity (stiffness). Higher values = spring snaps harder to the hold point. Very high values cause jitter. |
 | `fSpringMaxForce` | float | `1000.0` | Maximum force the Havok mouse spring can exert. Higher values = spring can pull harder against physics forces (combat impacts, gravity). If NPCs escape during combat, try increasing this. |
@@ -40,6 +43,19 @@ All settings live in `SKSE/Plugins/DragAndDrop.ini`. Loaded at startup via Win32
 | `fThrowImpulseMax` | float | `20.0` | Maximum throw force. When the action key is held for `fThrowTimeToMax` seconds, this is the force applied. Force ramps linearly from 0 to this value over the charge duration. |
 | `fThrowDropWindow` | float | `0.2` | Time in seconds before throw charging begins. If the action key is released within this window, it counts as a **drop** (no throw impulse). If held longer, charging begins. A "Ready to throw!" notification appears when the window expires. |
 | `fThrowTimeToMax` | float | `3.0` | Time in seconds from when charging starts (after `fThrowDropWindow`) to reach maximum throw force. Holding longer than this doesn't increase force further. |
+
+---
+
+## [Sound]
+
+All sound values are **hex FormIDs** of sound descriptors from Skyrim.esm (e.g., `0x3D0D3`). Look them up in xEdit or the Creation Kit. Set to `0` to disable. Uses `BSSoundHandle` with `SetObjectToFollow` at the player's 3D node.
+
+| Setting | Type | Default | Description |
+|---------|------|---------|-------------|
+| `iGrabFailSound` | hex | `0x0` | Sound played when grab fails (target exists but fails `IsValidTarget`). |
+| `iGrabSound` | hex | `0x0` | Sound played on successful grab. |
+| `iDropSound` | hex | `0x0` | Sound played when NPC is dropped (tap release or ReleaseNPC). |
+| `iThrowSound` | hex | `0x0` | Sound played when NPC is thrown (charged release or ThrowNPC). |
 
 ---
 
@@ -68,7 +84,8 @@ All settings live in `SKSE/Plugins/DragAndDrop.ini`. Loaded at startup via Win32
 
 - All float values use standard decimal notation (e.g., `5.0`, `0.05`, `300.0`)
 - Boolean values accept `true`/`false` or `1`/`0`
-- Integer values are DirectInput scancodes (not virtual key codes)
+- Integer values accept decimal or hex with `0x` prefix (e.g., `34` or `0x22` for G key)
+- Sound FormIDs should use hex notation (e.g., `0x3D0D3`) — look up in xEdit or Creation Kit
 - The INI file is loaded once at startup from the same directory as the DLL. Changes require a game restart.
 - Default values shown above are the code defaults — your INI file may have different values if you've customized them.
 - **Do NOT add inline comments with semicolons** — `GetPrivateProfileString` returns the full value string including trailing text, which breaks bool/float parsing.

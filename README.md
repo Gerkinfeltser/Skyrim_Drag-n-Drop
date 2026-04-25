@@ -136,5 +136,5 @@ This mod is in early development. Back up your saves. While the mod is designed 
 
 ## Credits
 
-- GrabAndThrow by powerof3 — Havok spring access and throw impulse patterns
-- CatchAndRelease — GrabActor spell configuration reference
+- [GrabAndThrow](https://www.nexusmods.com/skyrimspecialedition/mods/120460) by powerof3 — Havok spring access and throw impulse patterns
+- [Seize NPCs](https://www.nexusmods.com/skyrimspecialedition/mods/135703) — Mod inspiration & reference
