@@ -1,5 +1,7 @@
 # Drag & Drop — Codebase Audit (v0.1.92-alpha)
 
+> **Status: Completed in v0.1.93-alpha and v0.1.94-alpha.** All issues resolved except `DoRelease`/`ReleaseNPC` merge (deferred — both paths have subtle differences in impact tracking and state transitions that make merging risky without extensive testing).
+
 ## Dead Code
 
 ### `ForceRagdoll()` (DragHandler.cpp:450-492)

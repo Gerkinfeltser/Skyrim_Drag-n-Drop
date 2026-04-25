@@ -132,7 +132,7 @@ R = 0x13  (alternative, configurable via iActionKey)
 **Why fresh KO'd NPCs work but reloaded KO'd NPCs don't:**
 - Fresh KO: ragdoll state is "live", physics run normally, GrabActor works smooth
 - Reloaded KO: ragdoll state is "baked" into save, doesn't resume properly → stiff
-- `ForceRagdoll()` breaks G-key grab — calling it before `CastSpellImmediate` causes the grab to fail silently
+- ForceRagdoll was tried and removed — calling it before `CastSpellImmediate` causes the grab to fail silently
 
 **G-key grab path vs power menu path:**
 - G-key (with bEnableGKeyGrab=true): fires `TryGrabWithSpell` → `grabbedObject` set → `CastSpellImmediate(target=player, delivery=Self)` — smooth drag
@@ -149,10 +149,10 @@ DragDrop.IsDragging()              ; Returns bool
 
 ## Havok Physics Details
 
-- Spring access: `player->GetPlayerRuntimeData().grabSpring` (BSTSmallArray of hkRefPtr<bhkMouseSpringAction>)
+- Spring access via helpers: `GetSpringBody(player)` returns `hkpRigidBody*`, `GetSpringActionBase(player)` returns raw `uintptr_t` for offset access
 - Entity at raw offset +0x30 from `hkpMouseSpringAction` (hkpEntity* m_entity)
 - Spring settings at offsets: damping +0x60, elasticity +0x64, maxForce +0x68
-- Ragdoll body collection: `BSVisit::TraverseScenegraphCollision` walks all bhkNiCollisionObject → bhkCollisionObject → GetRigidBody → referencedObject (hkpRigidBody)
+- Ragdoll body collection: `CollectAllRigidBodies(actor)` via `BSVisit::TraverseScenegraphCollision`
 - Mass: `hkpRigidBody->motion.GetMass()` (typical NPC ~7.0)
 - Impulse applied to ALL ragdoll bodies (not just spring body) — prevents constraint damping
 - Delayed task via `SKSE::GetTaskInterface()->AddTask()` runs next frame after engine processes spring release
@@ -270,7 +270,6 @@ Controlled by `bEnableLogging` in INI. Set to `true` for detailed output, `false
 
 ## Not Yet Implemented
 
-- Stamina drain while dragging (stub exists, not wired to frame tick)
 - Shield behavior (held NPC blocks arrows)
 - Knockdown from thrown NPCs
 - Velocity-scaled PushActorAway force
