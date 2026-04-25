@@ -2,6 +2,8 @@
 
 All settings live in `SKSE/Plugins/DragAndDrop.ini`. Loaded at startup via Win32 `GetPrivateProfileString` using the DLL's own module path — works correctly under MO2.
 
+**IMPORTANT:** Do NOT add inline comments with semicolons or heavy padding. `GetPrivateProfileString` returns the full value string including trailing text, which breaks bool/float parsing. Keep values clean: `bEnableMod = true`
+
 ---
 
 ## [General]
@@ -10,21 +12,23 @@ All settings live in `SKSE/Plugins/DragAndDrop.ini`. Loaded at startup via Win32
 |---------|------|---------|-------------|
 | `bEnableMod` | bool | `true` | Master enable toggle. When `false`, the entire mod is disabled — no grab, no throw, no impact. |
 | `fGrabRange` | float | `150.0` | Maximum distance (in game units) from the player to initiate a grab via the G-key. Crosshair target must be within this range. |
-| `fGrabHoldDist` | float | `150.0` | Distance (in game units) the Havok mouse spring holds the NPC from the player. This is the "hold point" — the NPC's ragdoll center will hover around this distance in front of the camera. |
 | `bGrabAnyone` | bool | `false` | Allow grabbing **any** NPC regardless of state. Overrides `bGrabFollowers`, `bGrabChildren`, and `bGrabHostile`. Dead and paralyzed actors are always grabbable regardless. |
 | `bGrabFollowers` | bool | `true` | Allow grabbing player teammates (followers, hirelings, etc.). |
 | `bGrabChildren` | bool | `false` | Allow grabbing child actors. |
-| `bGrabHostile` | bool | `false` | **Require** the target to be hostile to the player for grabbing. Respects follower/child overrides — followers and children can still be grabbed even if not hostile. |
+| `bGrabHostile` | bool | `false` | Allow grabbing actors hostile to the player. Respects follower/child overrides — followers and children can still be grabbed even if not hostile. |
 | `fStaminaDrainRate` | float | `5.0` | Stamina drain per second while dragging. **Stub — not yet wired to the frame tick.** Currently has no effect. |
 | `fDragSpeedMult` | float | `1.0` | Player speed multiplier while dragging. Applied to `SpeedMult` actor value on grab start, restored on release. Set to `1.0` for no change, `2.0` to move twice as fast, etc. |
 | `bNoSpeedPenalty` | bool | `true` | When `true`, prevents the engine's default drag speed penalty. The engine normally slows the player while grabbing objects — this overrides it. |
-| `iActionKey` | int | `34` | DI scancode for the action key. `34` = G key, `19` = R key. This is the key used to release/drop NPCs and charge throws. Use a DirectInput scancode, not a virtual key code. |
-| `bUseShoutKeyForRelease` | bool | `false` | When `true`, the Shout/Power key (left mouse by default) is used for release/throw instead of (or in addition to) the action key. Useful if you want shout-key to control drop/throw. |
-| `bDropOnPlayerHit` | bool | `true` | Auto-drop the grabbed NPC if the player takes damage while dragging. The drop is delayed one frame to avoid slow-motion ragdoll artifacts. |
+| `iActionKey` | int | `34` | DI scancode for the action key. `34` = G key, `19` = R key. This is the key used for grab/drop/throw. Use a DirectInput scancode, not a virtual key code. |
+| `bUseShoutKeyForRelease` | bool | `false` | When `true`, the Shout/Power key (left mouse by default) is used for release/throw instead of (or in addition to) the action key. |
+| `bDropOnPlayerHit` | bool | `true` | Auto-drop the grabbed NPC if the player takes damage while dragging. Captures spring velocity immediately, defers spring destruction to next frame to avoid CTD. |
+| `bNoSprintWhileDragging` | bool | `true` | When `true`, drains player stamina to 0 each frame while dragging. The game's sprint system requires stamina, so this naturally prevents sprinting. |
+| `bShowNotifications` | bool | `true` | Show debug notifications ("Ready to throw!", "Dropped", "Threw!", etc.). Set to `false` to suppress all notifications. |
+| `fGrabHoldTimeout` | float | `0.5` | Seconds to hold G on initial grab before releasing triggers a drop. If you release G after this timeout, the NPC drops with momentum. Release before timeout = NPC stays grabbed (tap-grab). |
 | `fSpringDamping` | float | `1.5` | Havok mouse spring damping. Higher values = spring resists motion more (sluggish feel). Lower values = spring is more responsive but can oscillate. |
 | `fSpringElasticity` | float | `0.05` | Havok mouse spring elasticity (stiffness). Higher values = spring snaps harder to the hold point. Very high values cause jitter. |
 | `fSpringMaxForce` | float | `1000.0` | Maximum force the Havok mouse spring can exert. Higher values = spring can pull harder against physics forces (combat impacts, gravity). If NPCs escape during combat, try increasing this. |
-| `fDragMaxVelocity` | float | `5.0` | Maximum velocity (in Havok units) for ragdoll bodies **during drag**. Every frame, all ragdoll body velocities are clamped to this value. Prevents moon-gravity flings from fast camera swings. Set to `0` to disable clamping. |
+| `fDragMaxVelocity` | float | `5.0` | Maximum velocity (in Havok units) for ragdoll bodies **during drag**. Every frame, all ragdoll body velocities except the spring body are clamped to this value. Prevents moon-gravity flings from fast camera swings. The spring body is excluded so it retains real velocity for drop momentum. Set to `0` to disable clamping. |
 | `fGrabTetherDist` | float | `600.0` | Maximum distance (in game units) the grabbed NPC can drift from the player before auto-dropping. Safety net — if the ragdoll gets knocked far away (combat, physics glitches), it drops cleanly instead of stretching the spring infinitely. |
 
 ---
@@ -67,3 +71,4 @@ All settings live in `SKSE/Plugins/DragAndDrop.ini`. Loaded at startup via Win32
 - Integer values are DirectInput scancodes (not virtual key codes)
 - The INI file is loaded once at startup from the same directory as the DLL. Changes require a game restart.
 - Default values shown above are the code defaults — your INI file may have different values if you've customized them.
+- **Do NOT add inline comments with semicolons** — `GetPrivateProfileString` returns the full value string including trailing text, which breaks bool/float parsing.

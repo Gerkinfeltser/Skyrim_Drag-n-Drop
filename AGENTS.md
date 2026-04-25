@@ -35,63 +35,71 @@ psx compile_psc.bat "Source\Scripts\DragDrop.psc"
 1. **LesserPower** casts GrabActor effect — ESP conditions use tautology (`GetDead==1 OR GetDead==0`) so all actors pass
 2. **C++ IsValidTarget()** does the real filtering based on INI config
 3. **GrabActor** archetype creates Havok mouse spring (engine handles physics attachment)
-4. **Action key (G by default)**: Release/drop NPC. Also initiates grab when `bEnableGKeyGrab=true`
-5. **Action key hold**: Charge throw (shows "Ready to throw!" at threshold)
-6. **Action key release**: If held < dropWindow → drop. If held ≥ dropWindow → throw with ramping force
-7. **Throw**: On next frame after spring release, zeros all ragdoll bodies then applies impulse to every body
-8. **Swing impact**: During drag, proximity detection pushes nearby actors and static objects
-9. **Throw/drop impact tracking**: After release, tracks thrown NPC and applies knockback to actors it passes near
+4. **Action key (G by default)**: Grab, release/drop, or throw depending on timing:
+   - **Hold G on NPC** → grab on keydown. Release after > `fGrabHoldTimeout` → drops with momentum. Release before timeout → stays grabbed
+   - **Tap G while dragging** → drop (with momentum from camera swing)
+   - **Hold G while dragging** → charge throw. Release → throw with ramping force
+5. **Throw**: On next frame after spring release, zeros all ragdoll bodies then applies impulse to every body
+6. **Swing impact**: During drag, proximity detection pushes nearby actors and static objects
+7. **Throw/drop impact tracking**: After release, tracks thrown NPC and applies knockback to actors it passes near
 
 ## INI Config (`SKSE/Plugins/DragAndDrop.ini`)
 
 Loaded via Win32 `GetPrivateProfileString` using DLL module handle path resolution. Works under MO2.
 
+**IMPORTANT:** Do NOT add inline comments with semicolons or heavy padding. `GetPrivateProfileString` returns the full value string including trailing text, which breaks bool/float parsing. Keep values clean: `bEnableMod = true`
+
+Full setting descriptions: see `docs/INI-SETTINGS.md`
+
 ```ini
 [General]
-bEnableMod = true              ; Master enable toggle
-fGrabRange = 150.0             ; Max distance to initiate grab
-bGrabAnyone = false            ; Allow grabbing any NPC (overrides followers/children)
-bGrabFollowers = true          ; Allow grabbing player teammates
-bGrabChildren = false          ; Allow grabbing child actors
-bGrabHostile = false           ; Require hostile to grab (respects follower/child overrides)
-fStaminaDrainRate = 5.0        ; Stamina drain per second while dragging (stub, not wired)
-fDragSpeedMult = 1.0           ; Speed multiplier while dragging
-bNoSpeedPenalty = true         ; Prevent engine drag speed penalty
-iActionKey = 34                ; Action key scancode (34=G, 19=R)
-bUseShoutKeyForRelease = false ; Use Shout key for release instead of action key
-bDropOnPlayerHit = true        ; Auto-drop NPC if player takes damage
-fSpringDamping = 1.5           ; Havok mouse spring damping
-fSpringElasticity = 0.05       ; Havok mouse spring elasticity
-fSpringMaxForce = 1000.0       ; Havok mouse spring max force
-fDragMaxVelocity = 5.0         ; Max ragdoll body velocity during drag (prevents moon-gravity flings)
-fGrabTetherDist = 600.0        ; Auto-drop if NPC exceeds this distance from player
+bEnableMod = true
+fGrabRange = 150.0
+bGrabAnyone = false
+bGrabFollowers = true
+bGrabChildren = false
+bGrabHostile = false
+fStaminaDrainRate = 5.0              ; stub, not wired
+fDragSpeedMult = 1.0
+bNoSpeedPenalty = true
+iActionKey = 34
+bUseShoutKeyForRelease = false
+bDropOnPlayerHit = true
+bNoSprintWhileDragging = true
+bShowNotifications = true
+fGrabHoldTimeout = 0.5
+fSpringDamping = 1.5
+fSpringElasticity = 0.05
+fSpringMaxForce = 1000.0
+fDragMaxVelocity = 5.0
+fGrabTetherDist = 600.0
 
 [Throw]
-fThrowImpulseMax = 20.0        ; Max throw force
-fThrowDropWindow = 0.2         ; Seconds before charge starts (tap = drop)
-fThrowTimeToMax = 3.0          ; Seconds from charge start to reach max force
+fThrowImpulseMax = 20.0
+fThrowDropWindow = 0.2
+fThrowTimeToMax = 3.0
 
 [Impact]
-fImpactRadius = 120            ; Proximity detection radius for impact
-fImpactDuration = 3.0          ; Max impact tracking time after release
-fImpactMinVelocity = 0.5       ; Stop tracking below this speed
-fImpactForce = 300.0           ; Havok impulse magnitude (ragdoll targets)
-fImpactPushForceMax = 5.0      ; PushActorAway force (standing targets)
-fImpactDamage = 0.0            ; Damage dealt on impact
-fImpactDamageThrownMult = 1.0  ; Damage multiplier for thrown NPC (self-damage)
-bImpactOnDrop = false          ; Enable impact tracking on drops (not just throws)
-fSwingImpactRadiusMult = 0.6   ; Swing impact radius = fImpactRadius * this
-fSwingImpactCooldown = 0.5     ; Seconds between swing hits on same target
-bSwingImpactStatics = true     ; Push dynamic statics (baskets, clutter) during swing
-fRagdollMaxVelocity = 5.0      ; Max velocity for impact impulse clamping
-fImpactForceSpeedScale = 1.0   ; Impact force scales by speed * this
-fImpactDamageSpeedScale = 1.0  ; Impact damage scales by speed * this
+fImpactRadius = 120
+fImpactDuration = 3.0
+fImpactMinVelocity = 0.5
+fImpactForce = 300.0
+fImpactPushForceMax = 5.0            ; reserved, hardcoded in Papyrus
+fImpactDamage = 0.0
+fImpactDamageThrownMult = 1.0
+bImpactOnDrop = false
+fSwingImpactRadiusMult = 0.6
+fSwingImpactCooldown = 0.5
+bSwingImpactStatics = true
+fRagdollMaxVelocity = 5.0
+fImpactForceSpeedScale = 1.0
+fImpactDamageSpeedScale = 1.0
 ```
 
 ## Key Scancodes
 
 ```
-G = 0x22  (default action key — release/drop, also initiates grab when bEnableGKeyGrab=true)
+G = 0x22  (default action key — grab/drop/throw)
 R = 0x13  (alternative, configurable via iActionKey)
 ```
 
@@ -119,7 +127,7 @@ R = 0x13  (alternative, configurable via iActionKey)
 
 **G-key grab path vs power menu path:**
 - G-key (with bEnableGKeyGrab=true): fires `TryGrabWithSpell` → `grabbedObject` set → `CastSpellImmediate(target=player, delivery=Self)` — smooth drag
-- Power menu: fires `Actor::CastSpell` directly → bypasses `TryGrabWithSpell` — smooth drag
+- Power menu: fires `Actor::CastSpell` directly → bypasses `TryGrabWithSpell` — smooth drag but bypasses `IsValidTarget` (dev mode)
 
 ## Papyrus API
 
@@ -143,6 +151,12 @@ DragDrop.IsDragging()              ; Returns bool
 
 ## Features
 
+### Grab-Hold-Drop
+- Hold G on a valid NPC → grab starts on keydown
+- Release G after `fGrabHoldTimeout` seconds → drops with momentum
+- Release G before timeout → NPC stays grabbed (tap-grab)
+- After tap-grab: tap G to drop, hold G to charge throw
+
 ### Impact Knockback
 - After throw/drop, `State::TrackingImpact` monitors thrown NPC via ragdoll body velocities
 - 2D distance (X/Y only) for proximity checks — ragdoll center is at torso height, `GetPosition()` returns feet
@@ -165,6 +179,7 @@ DragDrop.IsDragging()              ; Returns bool
 
 ### Velocity Clamping (During Drag)
 - Every frame during drag, all ragdoll body velocities clamped to `fDragMaxVelocity`
+- **Spring body excluded** from clamping so it retains real velocity for drop momentum
 - Prevents moon-gravity flings from fast camera swings
 - Separate from impact impulse clamping (`fRagdollMaxVelocity`)
 
@@ -174,8 +189,14 @@ DragDrop.IsDragging()              ; Returns bool
 
 ### Drop on Player Hit
 - `DragHandler` inherits from `BSTEventSink<TESHitEvent>`
-- When player is hit while dragging, drop is delayed one frame via `AddTask` to avoid slow-mo ragdoll
+- FormID comparison to identify player as hit target (pointer comparison doesn't work across types)
+- Captures spring velocity in hit handler, defers spring destruction to next frame via `AddTask` to avoid CTD during physics step
 - Togglable via `bDropOnPlayerHit`
+
+### No Sprint While Dragging
+- When `bNoSprintWhileDragging=true`, drains player stamina to 0 each frame during drag
+- Game's sprint system requires stamina, so this naturally prevents sprinting
+- Sprint state bit (`actorState1.sprinting`) was tried but engine re-sets it each frame
 
 ### Engine Grab Gate
 - `UpdateGrabState()` validates engine-initiated grabs via `IsValidTarget()`
@@ -207,6 +228,7 @@ C:\Users\vector\Documents\My Games\Skyrim.INI\SKSE\DragAndDrop.log
 - Version bump: update VERSION in main.cpp
 - `EndGrabObject()` is gated behind `#ifndef ENABLE_SKYRIM_VR` — use `DestroyMouseSprings()` instead
 - Windows `min` macro conflicts with `std::min` — use `(std::min)(...)` parenthesized form
+- **INI inline comments break parsing** — `GetPrivateProfileString` returns the full value string including semicolons and padding. Keep values clean.
 
 ## Key References
 
@@ -227,7 +249,7 @@ C:\Users\vector\Documents\My Games\Skyrim.INI\SKSE\DragAndDrop.log
 - Shield behavior (held NPC blocks arrows)
 - Knockdown from thrown NPCs
 - Velocity-scaled PushActorAway force
-- SETTINGS-REFACTOR-PLAN (ESP globals + Papyrus MCM) — see `docs/plans/SETTINGS-REFACTOR-PLAN.md`
+- MCM menu for INI settings (see `docs/plans/SETTINGS-REFACTOR-PLAN.md` — partially obsolete, needs rewrite)
 - Knockout mod reload fix (stashed in Skyrim_KnockoutPatched)
 
 ## Save Game Safety

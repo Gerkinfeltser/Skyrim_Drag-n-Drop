@@ -1,7 +1,7 @@
 # Drag & Drop — Impact Knockback: Design & Debug Log
 
 **Date:** Fri Apr 24 2026
-**Status:** WORKING (v0.1.71-alpha)
+**Status:** WORKING (v0.1.85-alpha)
 
 ---
 
@@ -74,7 +74,7 @@ During drag state, proximity detection pushes nearby actors and static objects:
 
 ### Velocity Clamping (During Drag)
 
-Every frame during drag, all ragdoll body velocities are clamped to `fDragMaxVelocity`. Prevents moon-gravity flings from fast camera swings. Separate from impact impulse clamping (`fRagdollMaxVelocity`).
+Every frame during drag, all ragdoll body velocities (except the spring body) are clamped to `fDragMaxVelocity`. The spring body is excluded so it retains real velocity for drop momentum. Prevents moon-gravity flings from fast camera swings. Separate from impact impulse clamping (`fRagdollMaxVelocity`).
 
 ### Tether Distance
 
